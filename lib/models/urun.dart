@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class Urun {
   final String id;
   final String isletmeId;
@@ -26,10 +28,12 @@ class Urun {
       if (val is List) return val.map((e) => e.toString()).toList();
       if (val is String && val.isNotEmpty) {
         try {
-          final decoded = val.startsWith('[') ? val : '[$val]';
-          return (decoded as List).map((e) => e.toString()).toList();
+          final decoded = val.startsWith('[')
+              ? (jsonDecode(val) as List).map((e) => e.toString()).toList()
+              : val.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          return decoded;
         } catch (_) {
-          return [];
+          return [val];
         }
       }
       return [];

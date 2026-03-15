@@ -11,9 +11,20 @@ import 'screens/yeni_sayim_screen.dart';
 import 'screens/sayim_detay_screen.dart';
 import 'screens/urun_ekle_screen.dart';
 import 'screens/toplanmis_sayimlar_screen.dart';
+import 'services/storage_service.dart';
 
 final _router = GoRouter(
   initialLocation: '/login',
+  redirect: (context, state) {
+    final loggedIn = StorageService.hasToken;
+    final isLoginRoute = state.matchedLocation == '/login';
+
+    // Token yoksa ve login sayfasında değilse → login'e yönlendir
+    if (!loggedIn && !isLoginRoute) return '/login';
+    // Token varsa ve login sayfasındaysa → ana sayfaya yönlendir
+    if (loggedIn && isLoginRoute) return '/';
+    return null;
+  },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/', builder: (context, state) => const HomeScreen()),

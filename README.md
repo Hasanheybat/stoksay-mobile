@@ -405,7 +405,8 @@ AyarlarScreen'de toggle ile degistirilir. `PUT /api/profil/ayarlar` ile sunucuya
 | sqflite | ^2.4.2 | Yerel SQLite veritabani |
 | connectivity_plus | ^7.0.0 | Ag baglanti durumu izleme |
 | mobile_scanner | ^7.2.0 | Kamera ile barkod tarama |
-| shared_preferences | ^2.5.4 | Token ve tercih depolama |
+| shared_preferences | ^2.5.4 | Genel tercih depolama |
+| flutter_secure_storage | ^9.2.4 | Sifreli token depolama (Keystore/Keychain) |
 | intl | ^0.20.2 | Tarih/sayi formatlama |
 | path_provider | ^2.1.5 | Dosya sistemi yollari |
 | share_plus | ^12.0.1 | Platform paylasim diyalogu |
@@ -470,6 +471,34 @@ mobile/
 ---
 
 ## Surum Gecmisi
+
+### v3.1 — 2026-03-15
+
+- JWT token artik sifrelenmis depolanir (flutter_secure_storage — Android Keystore / iOS Keychain)
+- API yapilandirmasi prod/dev ortam ayrimini destekler (HTTPS/HTTP)
+- Sayim ID gosterimi ve kopyalama ozelligi
+- Sayim toplama bug fix (toplanan sayim artik sadece toplam sayimlarda gorunur)
+
+> **DIKKAT — Production Deployment:**
+> `ios/Runner/Info.plist` dosyasinda `NSAllowsArbitraryLoads` ayari development icin `true` olarak ayarlanmistir. Production'a yuklerken bu ayari kaldirin ve sadece gerekli domainler icin exception tanimlayin:
+> ```xml
+> <key>NSAppTransportSecurity</key>
+> <dict>
+>     <key>NSExceptionDomains</key>
+>     <dict>
+>         <key>stoksay.com</key>
+>         <dict>
+>             <key>NSIncludesSubdomains</key>
+>             <true/>
+>         </dict>
+>     </dict>
+> </dict>
+> ```
+> Ayrica `lib/config/api_config.dart` dosyasinda `_prodUrl` degerini gercek domain adresinizle degistirin ve build sirasinda `--dart-define=PROD=true` parametresini ekleyin:
+> ```bash
+> flutter build ios --release --dart-define=PROD=true
+> flutter build apk --release --dart-define=PROD=true
+> ```
 
 ### v3 — 2026-03-15
 

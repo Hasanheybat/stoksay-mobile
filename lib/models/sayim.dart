@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class Sayim {
   final String id;
   final String isletmeId;
@@ -28,6 +30,8 @@ class Sayim {
       if (val is List) return val;
       if (val is String && val.isNotEmpty) {
         try {
+          final decoded = jsonDecode(val);
+          if (decoded is List) return decoded;
           return [];
         } catch (_) {
           return [];
