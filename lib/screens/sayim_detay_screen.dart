@@ -303,6 +303,7 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
                           final urunAdi = urun['urun_adi'] ?? '—';
                           final isim2 = urun['isim_2'] ?? '';
                           final urunKodu = urun['urun_kodu'] ?? '';
+                          final urunSilindi = urun['aktif'] == 0 || urun['aktif'] == false;
                           final alt = [isim2, urunKodu].where((s) => s.toString().isNotEmpty).join(' · ');
                           final miktarRaw = k['miktar'] ?? 0;
                           final miktarD = double.tryParse(miktarRaw.toString()) ?? 0;
@@ -313,9 +314,9 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: urunSilindi ? const Color(0xFFFEF2F2) : Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFF3F4F6)),
+                              border: Border.all(color: urunSilindi ? const Color(0xFFFCA5A5) : const Color(0xFFF3F4F6)),
                             ),
                             child: Row(
                               children: [
@@ -324,22 +325,40 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        urunAdi.toString(),
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF1F2937),
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              urunAdi.toString(),
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: urunSilindi ? const Color(0xFFEF4444) : const Color(0xFF1F2937),
+                                                decoration: urunSilindi ? TextDecoration.lineThrough : null,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (urunSilindi) ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFEF4444),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: const Text('Silinmiş', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white)),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                       if (alt.isNotEmpty)
                                         Padding(
                                           padding: const EdgeInsets.only(top: 2),
                                           child: Text(
                                             alt,
-                                            style: const TextStyle(
-                                                fontSize: 11, color: Color(0xFF9CA3AF)),
+                                            style: TextStyle(
+                                                fontSize: 11, color: urunSilindi ? const Color(0xFFEF4444).withOpacity(0.6) : const Color(0xFF9CA3AF)),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
@@ -446,6 +465,31 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
             const Text('Sayım Bilgileri',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1F2937))),
             const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Sayım ID', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
+                  GestureDetector(
+                    onTap: () {
+                      final shortId = '#${_sayim?['id']?.toString().split('-')[0].toUpperCase() ?? ''}';
+                      Clipboard.setData(ClipboardData(text: shortId));
+                      Navigator.pop(context);
+                      showBildirim(context, 'Sayım ID kopyalandı', basarili: true);
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('#${_sayim?['id']?.toString().split('-')[0].toUpperCase() ?? '—'}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151))),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.copy, size: 14, color: Color(0xFF9CA3AF)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             _bilgiRow('İşletme', _sayim?['isletmeler']?['ad'] ?? '—'),
             _bilgiRow('Sayım', _sayim?['ad'] ?? '—'),
             _bilgiRow('Tarih', _tarihStr),

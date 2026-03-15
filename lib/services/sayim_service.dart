@@ -2,7 +2,7 @@ import 'api_service.dart';
 
 class SayimService {
   static Future<List<Map<String, dynamic>>> listele(String isletmeId) async {
-    final res = await ApiService.dio.get('/sayimlar', queryParameters: {'isletme_id': isletmeId, 'limit': 500});
+    final res = await ApiService.dio.get('/sayimlar', queryParameters: {'isletme_id': isletmeId, 'limit': 500, 'toplama': '0'});
     // API returns {data: [...]} or plain list
     final raw = res.data;
     if (raw is Map && raw['data'] is List) {

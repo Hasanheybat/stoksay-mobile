@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
 import '../services/sayim_service.dart';
 import '../services/urun_service.dart';
@@ -59,6 +60,7 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
   bool _skip2 = false;
 
   final _isimFocusNode = FocusNode();
+  final _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -96,6 +98,7 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
     _isim2Controller.dispose();
     _kodController.dispose();
     _isimFocusNode.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -211,6 +214,7 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
                   onDetect: (capture) {
                     final barcode = capture.barcodes.firstOrNull;
                     if (barcode?.rawValue != null) {
+                      _bipSesiCal();
                       Navigator.pop(ctx);
                       _barkodTara(barcode!.rawValue!);
                     }
@@ -226,6 +230,14 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
         ),
       ),
     );
+  }
+
+  void _bipSesiCal() {
+    final authState = ref.read(authProvider);
+    final barkodSesi = authState.kullanici?.barkodSesi ?? true;
+    if (barkodSesi) {
+      _audioPlayer.play(AssetSource('sounds/beep.wav'));
+    }
   }
 
   Future<void> _barkodTara(String barkod) async {

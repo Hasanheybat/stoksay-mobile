@@ -614,8 +614,6 @@ class _StokEkleSheetState extends State<_StokEkleSheet> {
           hata = data['hata'].toString();
         } else if (e.response?.statusCode == 403) {
           hata = 'Bu işlem için yetkiniz yok.';
-        } else if (e.response?.statusCode == 409) {
-          hata = 'Bu stok kodu zaten mevcut.';
         }
       }
       setState(() {
@@ -1349,8 +1347,6 @@ class _StokDuzenleSheetState extends State<_StokDuzenleSheet> {
           hata = data['hata'].toString();
         } else if (e.response?.statusCode == 403) {
           hata = 'Bu işlem için yetkiniz yok.';
-        } else if (e.response?.statusCode == 409) {
-          hata = 'Bu stok kodu zaten mevcut.';
         }
       }
       setState(() {

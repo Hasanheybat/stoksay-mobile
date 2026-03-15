@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
@@ -277,6 +278,31 @@ class _ToplanmisSayimlarScreenState
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Sayım ID', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
+                        GestureDetector(
+                          onTap: () {
+                            final shortId = '#${sayim['id']?.toString().split('-')[0].toUpperCase() ?? ''}';
+                            Clipboard.setData(ClipboardData(text: shortId));
+                            Navigator.pop(ctx);
+                            showBildirim(context, 'Sayım ID kopyalandı', basarili: true);
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('#${sayim['id']?.toString().split('-')[0].toUpperCase() ?? '—'}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151))),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.copy, size: 14, color: Color(0xFF9CA3AF)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   _infoRow('İşletme', sayim['isletmeler']?['ad']?.toString() ?? '—'),
                   _infoRow('Sayım', sayim['ad']?.toString() ?? '—'),
                   _infoRow('Tarih', (() {
