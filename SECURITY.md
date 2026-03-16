@@ -124,6 +124,24 @@ flutter build ios --release --obfuscate --split-debug-info=build/symbols --dart-
 - **Gercek etki:** COK DUSUK — Root cihaz gerektirir, FlutterSecureStorage zaten birincil depolama.
 - **Deploy'da duzeltilecek:** HAYIR — Performans gerekliligi, kabul edilebilir risk.
 
+#### O7 — Genel Exception Hata Kaybi
+
+- **Dosya:** `lib/services/api_service.dart`
+- **Risk:** API hatalari genel `Exception` firlatiliyor, hata detayi (status code, mesaj) kayboluyor.
+- **Deploy'da duzeltilecek:** EVET — Ozel exception sinifi olusturulacak.
+
+#### O8 — Offline Handling Yok
+
+- **Dosyalar:** Tum screen'ler
+- **Risk:** Internet baglantisi yoksa kullaniciya bilgi verilmiyor. Ekran donuyor.
+- **Deploy'da duzeltilecek:** EVET — Connectivity check + kullanici bildirimi eklenecek.
+
+#### O9 — TextEditingController Dispose Edilmiyor
+
+- **Dosya:** `lib/screens/sayim_detay_screen.dart`
+- **Risk:** Controller dispose edilmediginde memory leak olusur.
+- **Deploy'da duzeltilecek:** EVET — dispose() eklenmeli.
+
 ---
 
 ### DUSUK

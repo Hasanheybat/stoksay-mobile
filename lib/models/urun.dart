@@ -39,17 +39,21 @@ class Urun {
       return [];
     }
 
-    return Urun(
-      id: json['id']?.toString() ?? '',
-      isletmeId: (json['isletme_id'] ?? json['isletmeId'])?.toString() ?? '',
-      urunKodu: json['urun_kodu'],
-      urunAdi: json['urun_adi'] ?? '',
-      isim2: json['isim_2'],
-      birim: json['birim'],
-      kategori: json['kategori'],
-      barkodlar: parseBarkodlar(json['barkodlar']),
-      aktif: json['aktif'] == true || json['aktif'] == 1,
-    );
+    try {
+      return Urun(
+        id: json['id']?.toString() ?? '',
+        isletmeId: (json['isletme_id'] ?? json['isletmeId'])?.toString() ?? '',
+        urunKodu: json['urun_kodu']?.toString(),
+        urunAdi: json['urun_adi']?.toString() ?? '',
+        isim2: json['isim_2']?.toString(),
+        birim: json['birim']?.toString(),
+        kategori: json['kategori']?.toString(),
+        barkodlar: parseBarkodlar(json['barkodlar']),
+        aktif: json['aktif'] == true || json['aktif'] == 1,
+      );
+    } catch (_) {
+      return Urun(id: json['id']?.toString() ?? '', isletmeId: '', urunAdi: 'Hatalı veri');
+    }
   }
 
   Map<String, dynamic> toJson() => {

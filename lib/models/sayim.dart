@@ -40,18 +40,22 @@ class Sayim {
       return [];
     }
 
-    return Sayim(
-      id: json['id']?.toString() ?? '',
-      isletmeId: (json['isletme_id'] ?? json['isletmeId'])?.toString() ?? '',
-      depoId: (json['depo_id'] ?? json['depoId'])?.toString(),
-      ad: json['ad'] ?? '',
-      tarih: json['tarih'],
-      durum: json['durum'] ?? 'devam',
-      notlar: json['notlar'],
-      kisiler: parseKisiler(json['kisiler']),
-      depo: json['depolar'] is Map ? Map<String, dynamic>.from(json['depolar']) : null,
-      isletme: json['isletmeler'] is Map ? Map<String, dynamic>.from(json['isletmeler']) : null,
-    );
+    try {
+      return Sayim(
+        id: json['id']?.toString() ?? '',
+        isletmeId: (json['isletme_id'] ?? json['isletmeId'])?.toString() ?? '',
+        depoId: (json['depo_id'] ?? json['depoId'])?.toString(),
+        ad: json['ad']?.toString() ?? '',
+        tarih: json['tarih']?.toString(),
+        durum: json['durum']?.toString() ?? 'devam',
+        notlar: json['notlar']?.toString(),
+        kisiler: parseKisiler(json['kisiler']),
+        depo: json['depolar'] is Map ? Map<String, dynamic>.from(json['depolar']) : null,
+        isletme: json['isletmeler'] is Map ? Map<String, dynamic>.from(json['isletmeler']) : null,
+      );
+    } catch (_) {
+      return Sayim(id: json['id']?.toString() ?? '', isletmeId: '', ad: 'Hatalı veri');
+    }
   }
 
   Map<String, dynamic> toJson() => {
