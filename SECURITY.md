@@ -1,5 +1,7 @@
 # StokSay Mobile - Guvenlik
 
+**Son Tarama:** 2026-03-17 (v4.1.2)
+
 ## Kimlik Dogrulama
 - JWT token tabanli kimlik dogrulama
 - Token `FlutterSecureStorage` ile guvenlice saklanir (Keychain/EncryptedSharedPreferences)
@@ -66,9 +68,18 @@
 - Sync queue yalnizca kullanicinin kendi islemlerini icerir
 - Senkronizasyonda sunucu tarafli dogrulama yapilir
 
+## Platform Farklari
+
+| Ozellik | iOS | Android |
+|---------|-----|---------|
+| Token saklama | Keychain | EncryptedSharedPreferences |
+| ATS (HTTP korumasi) | Aktif (dev IP exception) | Yok |
+| Network security config | Info.plist | Yok |
+
 ## Bilinen Sinirlamalar
 - SQLite veritabani sifrelenmemistir (cihaz guvenligi ile korunur)
 - Root/jailbreak cihazlarda veri erisimi mumkundur
 - Offline moddayken sunucu tarafli yetkilendirme atlanir (sync sirasinda kontrol edilir)
 - Certificate pinning henuz uygulanmamistir
 - Ekran goruntusu korumasi henuz uygulanmamistir
+- Android network_security_config.xml henuz eklenmemistir

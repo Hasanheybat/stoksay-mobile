@@ -1,268 +1,201 @@
-# DepoSayim — Depo Sayim ve Stok Yonetim Platformu
+# StokSay Mobil — Depo Sayim ve Stok Yonetim Uygulamasi
 
-Kucuk ve orta olcekli isletmeler icin cok isletmeli, rol tabanli stok ve depo sayim yonetim platformu.
+Flutter ile gelistirilmis, offline-first mimari ile calisan mobil depo sayim uygulamasi. iOS ve Android icin tek codebase.
 
-**v4.1.1** — Kullanici Yonetimi + Pasif Kullanici Guvenligi (Mart 2026)
-
----
-
-## Platform Yapisi
-
-```
-deposayim/
-├── stoksay/          # Backend API + Admin Paneli (Web)
-│   ├── backend/      #   Express.js 4 + MySQL
-│   └── frontend/     #   React 18 + Vite 5 + Tailwind
-│
-├── mobile/           # Mobil Uygulama
-│   └── lib/          #   Flutter 3.11 (iOS + Android)
-│
-├── SECURITY.md'ler   # Her alt projede guvenlik raporu
-└── QA-RAPOR-*.md     # QA test raporlari
-```
+**v4.1.2** — Guvenlik Denetimi + Penetrasyon Testi (Mart 2026)
 
 ---
 
-## Hizli Bakis
+## Teknoloji
 
-| Bilesen | Teknoloji | Port / Platform | Hedef Kitle |
-|---------|-----------|-----------------|-------------|
-| **Backend API** | Express.js, MySQL, JWT | `localhost:3001` | Tum istemciler |
-| **Admin Paneli** | React, Vite, Zustand, Radix UI | `localhost:5173` | Sistem yoneticileri |
-| **Mobil Uygulama** | Flutter, Riverpod, SQLite | iOS / Android | Saha kullanicilari |
+| Bilesen | Teknoloji |
+|---------|-----------|
+| Framework | Flutter 3.11 (Dart) |
+| State Management | Riverpod |
+| Yerel Veritabani | SQLite (sqflite) |
+| API Iletisimi | Dio |
+| Token Saklama | FlutterSecureStorage |
+| Barkod Tarama | mobile_scanner |
+| Excel Export | excel paketi |
+| PDF Export | pdf + printing |
 
-### Mimari
+---
+
+## Uygulama Yapisi
 
 ```
-┌─────────────────┐     ┌─────────────────────┐
-│  Admin Paneli    │     │   Flutter Mobil App   │
-│  React + Vite    │     │   iOS / Android       │
-│  Zustand Store   │     │   Riverpod + SQLite   │
-└────────┬────────┘     └──────────┬────────────┘
-         │    REST API (JSON + JWT)    │
-         └────────────┬────────────────┘
-                      │
-           ┌──────────▼──────────┐
-           │   Express.js API     │
-           │   Helmet + CORS      │
-           │   Rate Limiting      │
-           │   Auth/Admin/Yetki   │
-           └──────────┬──────────┘
-                      │
-           ┌──────────▼──────────┐
-           │   MySQL / MariaDB    │
-           │   9 tablo + RLS      │
-           └─────────────────────┘
+mobile/
+├── lib/
+│   ├── config/
+│   │   └── api_config.dart       # API URL konfigurasyonu
+│   ├── db/
+│   │   ├── database_helper.dart  # SQLite veritabani yonetimi
+│   │   └── sync_service.dart     # Offline senkronizasyon servisi
+│   ├── models/                   # Veri modelleri
+│   ├── providers/
+│   │   ├── auth_provider.dart        # Kimlik dogrulama state
+│   │   ├── connectivity_provider.dart # Baglanti durumu
+│   │   └── isletme_provider.dart     # Isletme secimi state
+│   ├── screens/
+│   │   ├── login_screen.dart             # Giris ekrani
+│   │   ├── home_screen.dart              # Ana sayfa (dashboard)
+│   │   ├── shell_screen.dart             # Alt navigasyon shell
+│   │   ├── app_layout.dart               # Uygulama layout
+│   │   ├── sayimlar_screen.dart          # Sayim listesi
+│   │   ├── sayim_detay_screen.dart       # Sayim detay + kalem ekleme
+│   │   ├── yeni_sayim_screen.dart        # Yeni sayim olusturma
+│   │   ├── toplanmis_sayimlar_screen.dart # Birlestirilmis sayimlar
+│   │   ├── stoklar_screen.dart           # Urun/stok listesi
+│   │   ├── urun_ekle_screen.dart         # Yeni urun ekleme
+│   │   ├── depolar_screen.dart           # Depo listesi
+│   │   └── ayarlar_screen.dart           # Kullanici ayarlari
+│   ├── services/
+│   │   ├── api_service.dart          # Dio HTTP istemcisi
+│   │   ├── auth_service.dart         # Login/logout islemleri
+│   │   ├── storage_service.dart      # Token saklama (FlutterSecureStorage)
+│   │   ├── offline_id_service.dart   # Guvenli offline ID uretimi
+│   │   ├── sayim_service.dart        # Sayim API islemleri
+│   │   ├── urun_service.dart         # Urun API islemleri
+│   │   ├── depo_service.dart         # Depo API islemleri
+│   │   ├── isletme_service.dart      # Isletme API islemleri
+│   │   └── profil_service.dart       # Profil API islemleri
+│   ├── utils/                    # Yardimci fonksiyonlar
+│   ├── widgets/                  # Paylasilan widget'lar
+│   └── main.dart                 # Uygulama giris noktasi
+├── ios/                          # iOS platform konfigurasyonu
+├── android/                      # Android platform konfigurasyonu
+└── pubspec.yaml                  # Dart bagimliliklari
 ```
 
 ---
 
-## Ozellikler
+## Ekranlar (12 adet)
 
-### Cekirdek
-- Cok isletme destegi — bir kullanici birden fazla isletmede calisabilir
-- Granuler rol ve yetki sistemi (isletme bazli, 4 kategori x 4 islem)
-- Depo yonetimi (CRUD, konum, kod)
-- Urun katalogu (barkod, coklu isim, birim, kategori)
-- Sayim oturumlari (baslat → urun ekle → tamamla → topla)
-- Sayim birlestirme (toplama)
-- Excel (XLSX) toplu urun yukleme + catisma cozumu
-- PDF ve Excel rapor ciktisi
-- Dashboard istatistikleri ve grafikler
+| Ekran | Dosya | Aciklama |
+|-------|-------|----------|
+| Giris | `login_screen.dart` | Email + sifre, client-side dogrulama |
+| Ana Sayfa | `home_screen.dart` | Dashboard istatistikleri |
+| Sayimlar | `sayimlar_screen.dart` | Sayim listesi, filtreleme, arama |
+| Sayim Detay | `sayim_detay_screen.dart` | Kalem ekleme, barkod tarama, miktar |
+| Yeni Sayim | `yeni_sayim_screen.dart` | Sayim olusturma formu |
+| Birlestirilmis | `toplanmis_sayimlar_screen.dart` | Toplanan sayim raporlari |
+| Stoklar | `stoklar_screen.dart` | Urun katalogu |
+| Urun Ekle | `urun_ekle_screen.dart` | Yeni urun formu + barkod |
+| Depolar | `depolar_screen.dart` | Depo listesi |
+| Ayarlar | `ayarlar_screen.dart` | Sifre degistirme, profil |
+| Pasif Kullanici | (auth_provider) | Dark ekran + uyari |
+| Yetkisiz | (auth_provider) | Dark ekran + animasyonlu guncelle |
 
-### Mobil
-- Kamera ile barkod tarama
-- Offline-first mimari (SQLite + senkronizasyon kuyrugu)
-- Hesap makinesi entegrasyonu
-- Pull-to-refresh, swipe-to-dismiss bildirimler
-- Excel (XLSX) ve PDF disa aktarim + paylasim
-- Pasif kullanici ekrani (API erisim engeli + uyari)
-- Yetkisiz kullanici ekrani (dark tema + animasyonlu guncelle butonu)
-- Offline modda cikis engelleme (veri kaybi korumasi)
+---
 
-### Guvenlik (v4.1.1)
-- JWT tabanli kimlik dogrulama (7 gun sureli)
-- Helmet.js guvenlik basiklari + CSP (Content Security Policy)
-- CORS whitelist
-- Rate limiting (genel: 1500/15dk, giris: 20/15dk)
-- Soft delete — veriler asla silinmez
-- IDOR korumasi — sahiplik + yetki cift kontrol
-- Transaction ile race condition korumasi (barkod, toplama)
-- Input validation (miktar, rol, sifre uzunlugu)
-- Hata mesaji sizinti korumasi (err.message gizlenir)
+## Offline-First Mimari
+
+```
+┌─────────────────────┐
+│   Flutter UI         │
+│   Riverpod State     │
+└──────────┬──────────┘
+           │
+    ┌──────▼──────┐     ┌──────────────┐
+    │  Services    │────▶│  API (Dio)   │──▶ Backend
+    │  (CRUD)      │     └──────────────┘
+    └──────┬──────┘
+           │ offline?
+    ┌──────▼──────┐
+    │  SQLite DB   │
+    │  + Sync Queue│
+    └─────────────┘
+```
+
+- **Online:** API uzerinden veri okuma/yazma, yerel cache guncelleme
+- **Offline:** SQLite'tan okuma, degisiklikleri sync queue'ya ekleme
+- **Senkronizasyon:** Online olunca queue'daki islemleri sirayla API'ye gonderme
+- **Catisma:** Sunucu tarafli dogrulama, temp ID → gercek ID donusumu
+- **Veri koruma:** Offline modda cikis engeli (senkronize edilmemis veri varsa)
+
+---
+
+## iOS vs Android
+
+Flutter tek codebase ile her iki platform icin ayni uygulama uretilir.
+
+| Ozellik | iOS | Android |
+|---------|-----|---------|
+| UI / Tasarim | Ayni | Ayni |
+| Islevsellik | Ayni | Ayni |
+| Barkod tarama | Ayni | Ayni |
+| Offline mode | Ayni | Ayni |
+| Excel/PDF export | Ayni | Ayni |
+| **Token saklama** | Keychain | EncryptedSharedPreferences |
+| **ATS (HTTP korumasi)** | Aktif (dev IP exception) | Yok |
+| **Network security** | Info.plist | network_security_config yok |
+| **Build** | `flutter build ios` | `flutter build apk` |
+
+> Tasarim ve islevsellik %100 ayni. Fark yalnizca platform guvenlik konfigurasyonlarinda.
 
 ---
 
 ## Kurulum
 
 ### Gereksinimler
-- Node.js 18+
-- MySQL 8 veya MariaDB 10+
-- Flutter SDK 3.11+ (mobil icin)
-- PM2 (onerilen)
+- Flutter SDK 3.11+
+- Xcode (iOS icin)
+- Android Studio / SDK (Android icin)
+- Backend API calisiyor olmali (`localhost:3001`)
 
-### 1. Backend
-
-```bash
-cd stoksay/backend
-npm install
-cp .env.example .env          # Ortam degiskenlerini duzenle
-mysql -u root -p < db/schema_mariadb.sql
-node seed.js                  # Ilk admin kullanicisi
-
-# Calistirma
-pm2 start index.js --name stoksay-backend
-```
-
-### 2. Admin Paneli (Frontend)
-
-```bash
-cd stoksay/frontend
-npm install
-npm run dev                   # localhost:5173
-```
-
-### 3. Mobil Uygulama
+### Baslangic
 
 ```bash
 cd mobile
 flutter pub get
 
-# api_config.dart icinde IP adresini ayarla
-# lib/config/api_config.dart → _devUrl
+# API adresini ayarla
+# lib/config/api_config.dart → _devUrl icindeki IP'yi degistir
+```
 
+### Calistirma
+
+```bash
 flutter run                   # Bagli cihaza yukle
+flutter run -d chrome          # Web debug (deneysel)
+```
+
+### Build
+
+```bash
 flutter build apk --release   # Android APK
 flutter build ios --release   # iOS (Xcode gerekli)
 ```
 
 ---
 
-## Ortam Degiskenleri
+## Backend Baglantisi
 
-`stoksay/backend/.env`:
+Bu uygulama StokSay Backend API'sine baglanir:
 
-```env
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=stoksay
-DB_PASS=sifre
-DB_NAME=stoksay
-PORT=3001
-JWT_SECRET=min-32-karakter-gizli-anahtar
-ALLOWED_ORIGINS=http://localhost:5173,http://<IP>:3001
-```
+| Ortam | URL |
+|-------|-----|
+| Development | `http://<BILGISAYAR_IP>:3001/api` |
+| Production | `https://stoksay.com/api` |
 
-`mobile/lib/config/api_config.dart`:
-
-```dart
-static const String _devUrl = 'http://<BILGISAYAR_IP>:3001/api';
-static const String _prodUrl = 'https://stoksay.com/api';
-```
+Konfigürasyon: `lib/config/api_config.dart`
 
 ---
 
-## Veritabani
+## Guvenlik
 
-9 tablo, UUID primary key, JSONB yetkiler:
+Detayli guvenlik raporu: [`SECURITY.md`](SECURITY.md)
 
-| Tablo | Aciklama |
-|-------|----------|
-| `kullanicilar` | Kullanicilar (email, bcrypt sifre, admin/kullanici rol) |
-| `isletmeler` | Isletmeler (ad, kod, adres) |
-| `depolar` | Depolar (isletme_id FK, ad, konum) |
-| `isletme_urunler` | Urunler (barkod, coklu isim, birim) |
-| `sayimlar` | Sayim oturumlari (durum: devam/tamamlandi/silindi) |
-| `sayim_kalemleri` | Sayim kalemleri (urun_id, miktar, birim) |
-| `kullanici_isletme` | Kullanici-Isletme iliskisi + yetkiler (JSON) |
-| `roller` | Rol sablonlari (sistem + ozel) |
-| `urun_log` | Urun degisiklik gecmisi |
-
----
-
-## API Endpointleri
-
-**Base URL:** `http://localhost:3001/api`
-
-| Grup | Endpoint | Yetki |
-|------|----------|-------|
-| **Auth** | `POST /auth/login`, `GET /auth/me`, `PUT /auth/update-password` | Public / Auth |
-| **Sayimlar** | `GET/POST/PUT/DELETE /sayimlar`, `POST /sayimlar/topla` | sayim.* |
-| **Kalemler** | `POST/PUT/DELETE /sayimlar/:id/kalem/:kalemId` | Sadece durum=devam |
-| **Urunler** | `GET/POST/PUT/DELETE /urunler`, `GET /urunler/barkod/:barkod` | urun.* |
-| **Depolar** | `GET/POST/PUT/DELETE /depolar` | depo.* |
-| **Isletmeler** | `GET/POST/PUT/DELETE /isletmeler` | Admin |
-| **Kullanicilar** | `GET/POST/PUT/DELETE /kullanicilar`, yetki/isletme atama | Admin |
-| **Roller** | `GET/POST/PUT/DELETE /roller` | Admin |
-| **Profil** | `GET /profil/isletmelerim`, `GET /profil/stats`, `PUT /profil/ayarlar` | Auth |
-| **Stats** | `GET /stats`, `/sayim-trend`, `/isletme-sayimlar` | Admin |
-
----
-
-## Yetki Sistemi
-
-| Rol | Kapsam |
-|-----|--------|
-| `admin` | Tum islemlere tam erisim |
-| `kullanici` | Isletme bazli granuler yetkiler |
-
-### Yetki Matrisi (JSON)
-
-```json
-{
-  "urun":        { "goruntule": true, "ekle": false, "duzenle": false, "sil": false },
-  "depo":        { "goruntule": true, "ekle": false, "duzenle": false, "sil": false },
-  "sayim":       { "goruntule": true, "ekle": true,  "duzenle": true,  "sil": false },
-  "toplam_sayim": { "goruntule": false, "ekle": false, "duzenle": false, "sil": false }
-}
-```
-
----
-
-## Proses Yonetimi
-
-```bash
-# Backend
-pm2 start stoksay/backend/index.js --name stoksay-backend
-pm2 restart stoksay-backend --update-env
-pm2 logs stoksay-backend
-
-# Frontend dev
-cd stoksay/frontend && npm run dev
-
-# Mobil
-cd mobile && flutter run
-```
-
----
-
-## Test Hesaplari
-
-| Hesap | Email | Sifre | Rol |
-|-------|-------|-------|-----|
-| Admin | admin@stoksay.com | TestAdmin123 | admin |
-| Demo | demo001@stoksay.demo | 123 | kullanici |
-
----
-
-## Guvenlik Raporlari
-
-Her alt projede SECURITY.md dosyasi bulunur:
-
-- `stoksay/SECURITY.md` — Backend + Frontend guvenlik denetimi
-- `mobile/SECURITY.md` — Flutter mobil guvenlik denetimi
-- `QA-RAPOR-2026-03-16.md` — Son QA test raporu
-
-### Son Guvenlik Guncellemesi (v3.3 — 2026-03-16)
-
-16 guvenlik acigi kapatildi:
-
-| Oncelik | Sayi | Ornekler |
-|---------|------|----------|
-| **Kritik** | 3 | Async handler crash korumasi, isletme_ids yetki bypass, yetkiGuard null check |
-| **Yuksek** | 4 | err.message sizinti, barkod race condition (transaction), toplama race condition, rol silme atomik islem |
-| **Orta** | 7 | Sifre min uzunluk, rol validation, miktar validation, rate limit, CSP, ad_soyad crash, Flutter JSON parse |
-| **Dusuk** | 2 | error→hata tutarliligi, ek input dogrulama |
+### Ozet
+- JWT token FlutterSecureStorage ile saklanir (Keychain / EncryptedSharedPreferences)
+- Token suresi client-side kontrol edilir (exp + 30 sn tampon)
+- Offline ID: `Random.secure()` ile kriptografik rastgelelik
+- Sync queue: hata_sayisi >= 3 olan kayitlar temizlenir
+- LIKE injection koruması: JSON decode ile tam esleme
+- Pull data validation: bos ID kontrolu
+- Pasif kullanici: dark ekran, sadece cikis yapilabilir
+- App foreground'da yetki bilgileri yeniden kontrol edilir
+- 500 hatalari genel mesajla gosterilir (sunucu detaylari gizlenir)
 
 ---
 
@@ -270,23 +203,21 @@ Her alt projede SECURITY.md dosyasi bulunur:
 
 | Surum | Tarih | Aciklama |
 |-------|-------|----------|
-| **v4.1.1** | 2026-03-17 | Pasif kullanici guvenligi, rol kaldirma yetki sifirlama, admin panel iyilestirmeleri |
+| **v4.1.2** | 2026-03-17 | Guvenlik denetimi, penetrasyon testi, dokumantasyon guncellemesi |
+| **v4.1.1** | 2026-03-17 | Pasif kullanici ekrani, yetkisiz ekran, XLSX export |
 | **v4.0** | 2026-03-17 | Offline/online mod, senkronizasyon, aktif sayim korumasi |
-| **v3.3** | 2026-03-16 | 16 guvenlik acigi kapatildi, QA test raporu |
-| **v3.2** | 2026-03-16 | CSP aktif, Helmet.js, guvenlik iyilestirmeleri |
-| **v3.1** | 2026-03-15 | Sayim ID gosterim, flutter_secure_storage |
-| **v3** | 2026-03-15 | Web app kaldirildi, sadece admin paneli |
+| **v3.3** | 2026-03-16 | 12 guvenlik acigi kapatildi |
+| **v3.1** | 2026-03-15 | flutter_secure_storage, sayim ID gosterim |
 | **v2** | 2026-03-14 | Flutter mobil, offline-first, barkod tarayici |
-| **v1** | 2026-03-12 | Ilk kararli surum |
 
 ---
 
-## Repolar
+## Repo
 
 | Repo | URL |
 |------|-----|
-| Backend + Admin | [github.com/Hasanheybat/stoksayim](https://github.com/Hasanheybat/stoksayim) |
 | Mobil Uygulama | [github.com/Hasanheybat/stoksay-mobile](https://github.com/Hasanheybat/stoksay-mobile) |
+| Backend + Admin | [github.com/Hasanheybat/stoksayim](https://github.com/Hasanheybat/stoksayim) |
 
 ---
 
