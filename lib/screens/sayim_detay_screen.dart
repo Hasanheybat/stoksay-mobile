@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
+import 'package:excel/excel.dart' as xl;
 import '../services/sayim_service.dart';
 import '../widgets/bildirim.dart';
 import 'app_layout.dart';
@@ -29,6 +30,7 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
   bool _yukleniyor = true;
   bool _tamamlaniyor = false;
   String _aramaMetni = '';
+  Set<int> _acikKalemler = {};
 
   @override
   void initState() {
@@ -123,7 +125,7 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
     try {
       await SayimService.tamamla(widget.sayimId);
       _showSnack('Sayım tamamlandı!');
-      if (mounted) context.pop();
+      if (mounted) context.pop(true);
     } catch (e) {
       _showSnack('Sayım tamamlanamadı.', basarili: false);
     }
@@ -310,101 +312,144 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
                           final miktar = miktarD == miktarD.roundToDouble() ? miktarD.toInt() : miktarD;
                           final birim = k['birim'] ?? '';
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: urunSilindi ? const Color(0xFFFEF2F2) : Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: urunSilindi ? const Color(0xFFFCA5A5) : const Color(0xFFF3F4F6)),
-                            ),
-                            child: Row(
-                              children: [
-                                // Ürün bilgileri
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                          final barkodlar = urun['barkodlar']?.toString() ?? '';
+                          final acik = _acikKalemler.contains(i);
+
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() {
+                              if (acik) {
+                                _acikKalemler.remove(i);
+                              } else {
+                                _acikKalemler.add(i);
+                              }
+                            }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: urunSilindi ? const Color(0xFFFEF2F2) : Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: acik ? _P.withOpacity(0.3) : (urunSilindi ? const Color(0xFFFCA5A5) : const Color(0xFFF3F4F6))),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
                                     children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              urunAdi.toString(),
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                                color: urunSilindi ? const Color(0xFFEF4444) : const Color(0xFF1F2937),
-                                                decoration: urunSilindi ? TextDecoration.lineThrough : null,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
+                                      // Ürün bilgileri
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    urunAdi.toString(),
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: urunSilindi ? const Color(0xFFDC2626) : const Color(0xFF1F2937),
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (urunSilindi) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFFEE2E2),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      border: Border.all(color: const Color(0xFFFCA5A5), width: 0.5),
+                                                    ),
+                                                    child: const Text('Pasif', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFDC2626))),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
-                                          ),
-                                          if (urunSilindi) ...[
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFEF4444),
-                                                borderRadius: BorderRadius.circular(6),
+                                            if (alt.isNotEmpty)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 2),
+                                                child: Text(
+                                                  alt,
+                                                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
                                               ),
-                                              child: const Text('Silinmiş', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white)),
+                                          ],
+                                        ),
+                                      ),
+                                      // Miktar
+                                      RichText(
+                                        text: TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text: '$miktar ',
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w900,
+                                                color: _P,
+                                              ),
+                                            ),
+                                            TextSpan(
+                                              text: birim.toString(),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF9CA3AF),
+                                              ),
                                             ),
                                           ],
-                                        ],
+                                        ),
                                       ),
-                                      if (alt.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 2),
-                                          child: Text(
-                                            alt,
-                                            style: TextStyle(
-                                                fontSize: 11, color: urunSilindi ? const Color(0xFFEF4444).withOpacity(0.6) : const Color(0xFF9CA3AF)),
-                                            overflow: TextOverflow.ellipsis,
+                                      // Düzenle butonu
+                                      if (_devam) ...[
+                                        const SizedBox(width: 8),
+                                        GestureDetector(
+                                          onTap: () => _showDuzenle(k),
+                                          child: Container(
+                                            width: 32,
+                                            height: 32,
+                                            decoration: BoxDecoration(
+                                              color: _PL,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: const Icon(Icons.edit, size: 14, color: _P),
                                           ),
                                         ),
+                                      ],
                                     ],
                                   ),
-                                ),
-                                // Miktar
-                                RichText(
-                                  text: TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: '$miktar ',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w900,
-                                          color: _P,
-                                        ),
-                                      ),
-                                      TextSpan(
-                                        text: birim.toString(),
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF9CA3AF),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Düzenle butonu
-                                if (_devam) ...[
-                                  const SizedBox(width: 8),
-                                  GestureDetector(
-                                    onTap: () => _showDuzenle(k),
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
+                                  // Genişletilmiş detay bilgileri
+                                  if (acik) ...[
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: _PL,
-                                        borderRadius: BorderRadius.circular(12),
+                                        color: const Color(0xFFF9FAFB),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: const Color(0xFFF3F4F6)),
                                       ),
-                                      child: const Icon(Icons.edit, size: 14, color: _P),
+                                      child: Column(
+                                        children: [
+                                          if (urunKodu.toString().isNotEmpty)
+                                            _kalemDetayRow('Ürün Kodu', urunKodu.toString()),
+                                          if (isim2.toString().isNotEmpty)
+                                            _kalemDetayRow('İkinci İsim', isim2.toString()),
+                                          if (barkodlar.isNotEmpty)
+                                            _kalemDetayRow('Barkod', barkodlar),
+                                          _kalemDetayRow('Birim', birim.toString().isNotEmpty ? birim.toString() : 'ADET'),
+                                          if (urunSilindi)
+                                            _kalemDetayRow('Durum', 'Pasif Ürün', valueColor: const Color(0xFFDC2626)),
+                                        ],
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           );
                         },
@@ -506,6 +551,19 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
     );
   }
 
+  Widget _kalemDetayRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
+          Flexible(child: Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: valueColor ?? const Color(0xFF374151)), textAlign: TextAlign.end)),
+        ],
+      ),
+    );
+  }
+
   Widget _bilgiRow(String label, String val, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -525,37 +583,55 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
     return d == d.roundToDouble() ? d.toInt().toString() : d.toString();
   }
 
-  Future<void> _exportCSV() async {
+  Future<void> _exportExcel() async {
     final isletme = _sayim?['isletmeler']?['ad'] ?? '';
     final depo = _sayim?['depolar']?['ad'] ?? '';
     final sayimAd = _sayim?['ad'] ?? '';
     final sayimId = widget.sayimId;
-    final rows = <List<String>>[
+
+    final excel = xl.Excel.createExcel();
+    final sheet = excel['Sayım'];
+    // Varsayılan Sheet1'i sil
+    if (excel.sheets.containsKey('Sheet1')) excel.delete('Sheet1');
+
+    // Başlık bilgileri
+    final infoRows = [
       ['İşletme', isletme],
       ['Depo', depo],
       ['Sayım', sayimAd],
-      ['Sayım ID', sayimId],
+      ['Sayım ID', '#${sayimId.split('-').first.toUpperCase()}'],
       ['Tarih', _tarihStr],
       ['Toplam Kalem', '${_kalemler.length}'],
-      [],
-      ['Ürün Adı', 'İsim 2', 'Ürün Kodu', 'Miktar', 'Birim', 'Barkodlar'],
     ];
+    for (final r in infoRows) {
+      sheet.appendRow(r.map((c) => xl.TextCellValue(c)).toList());
+    }
+    // Boş satır
+    sheet.appendRow([xl.TextCellValue('')]);
+
+    // Tablo başlıkları
+    final headers = ['Ürün Adı', 'İsim 2', 'Ürün Kodu', 'Miktar', 'Birim', 'Barkodlar'];
+    sheet.appendRow(headers.map((h) => xl.TextCellValue(h)).toList());
+
+    // Kalem verileri
     for (final k in _kalemler) {
       final urun = k['isletme_urunler'] as Map<String, dynamic>?;
-      rows.add([
-        urun?['urun_adi']?.toString() ?? '',
-        urun?['isim_2']?.toString() ?? '',
-        urun?['urun_kodu']?.toString() ?? '',
-        _fmtMiktar(k['miktar']),
-        k['birim']?.toString() ?? '',
-        urun?['barkodlar']?.toString() ?? '',
+      sheet.appendRow([
+        xl.TextCellValue(urun?['urun_adi']?.toString() ?? ''),
+        xl.TextCellValue(urun?['isim_2']?.toString() ?? ''),
+        xl.TextCellValue(urun?['urun_kodu']?.toString() ?? ''),
+        xl.TextCellValue(_fmtMiktar(k['miktar'])),
+        xl.TextCellValue(k['birim']?.toString() ?? ''),
+        xl.TextCellValue(urun?['barkodlar']?.toString() ?? ''),
       ]);
     }
-    final csv = rows.map((r) => r.map((c) => '"${c.replaceAll('"', '""')}"').join(',')).join('\n');
+
     final dir = await getTemporaryDirectory();
     final fileName = '${sayimAd}_$depo'.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
-    final file = File('${dir.path}/$fileName.csv');
-    await file.writeAsString('\uFEFF$csv'); // BOM for Excel UTF-8
+    final file = File('${dir.path}/$fileName.xlsx');
+    final bytes = excel.encode();
+    if (bytes == null) return;
+    await file.writeAsBytes(bytes);
     await SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
   }
 
@@ -674,7 +750,7 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
             GestureDetector(
               onTap: () {
                 Navigator.pop(ctx);
-                _exportCSV();
+                _exportExcel();
               },
               child: Container(
                 width: double.infinity,
@@ -698,10 +774,10 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
                     const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Excel (CSV)',
+                        Text('Excel (XLSX)',
                             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1F2937))),
                         SizedBox(height: 2),
-                        Text('Tüm veriler Excel\'de açılabilir formatta',
+                        Text('Gerçek Excel dosyası olarak paylaş',
                             style: TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
                       ],
                     ),

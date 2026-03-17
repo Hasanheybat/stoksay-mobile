@@ -301,7 +301,6 @@ class _ToplanmisSayimlarScreenState
                       ],
                     ),
                   ),
-                  _infoRow('İşletme', sayim['isletmeler']?['ad']?.toString() ?? '—'),
                   _infoRow('Sayım', sayim['ad']?.toString() ?? '—'),
                   _infoRow('Tarih', (() {
                     final t = sayim['tarih'];

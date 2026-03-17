@@ -44,6 +44,18 @@
 - Sunucuya ulasilamazsa cache'ten veri gosterilir
 - Kullaniciya "Cevrimdisi veri gosteriliyor" bildirimi verilir
 
+## Pasif Kullanici Korumasi
+- authGuard 403 dondugunde pasif state aktiflesir
+- Cache fallback atlanir, yetkilerMap bos olarak ayarlanir
+- Dark ekran: unlem ikonu + "Hesabiniz pasife alindi" uyarisi
+- Sadece cikis yap butonu aktif, baska islem yapilamaz
+- Offline modda cikis engeli: veri kaybi onlenir
+
+## Yetkisiz Kullanici Ekrani
+- Yetki atanmamis kullanici dark ekranla karsilanir
+- Animasyonlu guncelle butonu ile yetki sonrasi normale donus
+- Atanan yetkiler listesi goruntulenir
+
 ## Hassas Veri Yonetimi
 - Kullanici parolasi cihazda saklanmaz
 - JWT token FlutterSecureStorage ile korunur

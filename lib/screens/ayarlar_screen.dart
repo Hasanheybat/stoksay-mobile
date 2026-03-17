@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../services/profil_service.dart';
 import '../widgets/bildirim.dart';
 import 'app_layout.dart';
@@ -274,8 +275,12 @@ class _AyarlarScreenState extends ConsumerState<AyarlarScreen> {
             const SizedBox(height: 16),
 
             // Çıkış Yap butonu
-            GestureDetector(
-              onTap: () async {
+            Builder(builder: (context) {
+              final isOffline = ref.watch(connectivityProvider).offlineMode;
+              return GestureDetector(
+              onTap: isOffline ? () {
+                showBildirim(context, 'Çevrimdışı modda çıkış yapamazsınız. Önce verileri senkronize edin.', tip: BildirimTip.hata);
+              } : () async {
                 final confirmed = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -299,41 +304,56 @@ class _AyarlarScreenState extends ConsumerState<AyarlarScreen> {
                   if (context.mounted) context.go('/login');
                 }
               },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
+              child: Opacity(
+                opacity: isOffline ? 0.4 : 1.0,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.logout, color: Colors.white, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      'Çıkış Yap',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.logout, color: Colors.white, size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            'Çıkış Yap',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (isOffline) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Çevrimdışı modda çıkış yapılamaz',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+            );
+            }),
 
             const SizedBox(height: 12),
 

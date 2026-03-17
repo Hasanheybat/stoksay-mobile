@@ -15,11 +15,29 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin {
   bool _syncing = false;
   bool _syncDone = false;
+  bool _yetkiYok = false;
   String _syncStats = '';
   bool _cacheBildirimGosterildi = false;
+  late AnimationController _glowController;
+
+  @override
+  void initState() {
+    super.initState();
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncData());
+  }
+
+  @override
+  void dispose() {
+    _glowController.dispose();
+    super.dispose();
+  }
 
   Future<void> _syncData() async {
     if (_syncing) return;
@@ -33,18 +51,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() {
       _syncing = true;
       _syncDone = false;
+      _yetkiYok = false;
       _syncStats = '';
     });
 
     try {
       await ref.read(authProvider.notifier).oturumKontrol();
+
+      // Pasif kullanıcı kontrolü — 403 alındıysa build() pasif ekranı gösterecek
+      final authCheck = ref.read(authProvider);
+      if (authCheck.pasif) {
+        setState(() { _syncing = false; });
+        return;
+      }
+
       await ref.read(isletmeProvider.notifier).yukle();
       final isletme = ref.read(isletmeProvider);
-      setState(() {
-        _syncing = false;
-        _syncDone = true;
-        _syncStats = '${isletme.isletmeler.length} işletme senkronize edildi';
-      });
+
+      // Yetki kontrolü
+      final authN = ref.read(authProvider.notifier);
+      final auth = ref.read(authProvider);
+      final isAdm = auth.kullanici?.rol == 'admin';
+      final hasPerms = isAdm ||
+          authN.hasYetki('urun', 'goruntule') ||
+          authN.hasYetki('sayim', 'goruntule') ||
+          authN.hasYetki('depo', 'goruntule') ||
+          authN.hasYetki('toplam_sayim', 'goruntule');
+
+      if (hasPerms) {
+        // Yetki atanmış — atanan yetkileri listele
+        final yetkiListesi = <String>[];
+        if (authN.hasYetki('urun', 'goruntule')) yetkiListesi.add('Stoklar');
+        if (authN.hasYetki('sayim', 'goruntule')) yetkiListesi.add('Sayımlar');
+        if (authN.hasYetki('depo', 'goruntule')) yetkiListesi.add('Depolar');
+        if (authN.hasYetki('toplam_sayim', 'goruntule')) yetkiListesi.add('Toplam Sayımlar');
+        setState(() {
+          _syncing = false;
+          _syncDone = true;
+          _syncStats = isAdm
+              ? 'Yönetici — tüm yetkiler aktif'
+              : 'Yetkiler: ${yetkiListesi.join(", ")}';
+        });
+      } else {
+        // Hâlâ yetki yok
+        setState(() {
+          _syncing = false;
+          _syncDone = false;
+          _yetkiYok = true;
+          _syncStats = 'Yetki atanmadı';
+        });
+        return;
+      }
+
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) setState(() => _syncDone = false);
       });
@@ -253,106 +311,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Offline modda "Verileri Güncelle" daima pasif
     final syncEnabled = !isOffline;
 
-    return AppLayout(
-      showSettings: true,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    // ── PASİF KULLANICI EKRANI ──
+    if (auth.pasif) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF121020),
+        body: Column(
           children: [
-            // Verileri Güncelle button
-            GestureDetector(
-              onTap: syncEnabled ? _syncData : null,
-              child: Opacity(
-                opacity: syncEnabled ? 1.0 : 0.5,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
+            // Dark header
+            Container(
+              color: const Color(0xFF1A1730),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                   child: Row(
                     children: [
                       Container(
-                        width: 48,
-                        height: 48,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          color: _syncDone
-                              ? const Color(0xFF10B981)
-                              : isOffline
-                                  ? Colors.orange
-                                  : const Color(0xFF6C53F5),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (_syncDone
-                                      ? const Color(0xFF10B981)
-                                      : isOffline
-                                          ? Colors.orange
-                                          : const Color(0xFF6C53F5))
-                                  .withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                          color: const Color(0xFFDC2626),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        child: _syncing
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                              )
-                            : Icon(
-                                _syncDone ? Icons.check : Icons.sync,
-                                color: Colors.white,
-                                size: 22,
-                              ),
+                        child: Center(
+                          child: Text(
+                            (auth.kullanici?.adSoyad ?? '?').isNotEmpty
+                                ? (auth.kullanici?.adSoyad ?? '?')[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _syncing
-                                  ? 'Güncelleniyor...'
-                                  : _syncDone
-                                      ? 'Tamamlandı!'
-                                      : 'Verileri Güncelle',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1F2937),
-                              ),
+                              auth.kullanici?.adSoyad ?? 'Kullanıcı',
+                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _syncStats.isNotEmpty
-                                  ? _syncStats
-                                  : isOffline
-                                      ? 'Çevrimiçi moda dönünce aktif olur'
-                                      : 'Tüm verileri senkronize et',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+                            const Text(
+                              'Hesap Pasif',
+                              style: TextStyle(color: Color(0xFFFCA5A5), fontSize: 13, fontWeight: FontWeight.w600),
                             ),
                           ],
-                        ),
-                      ),
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isOffline
-                              ? Colors.orange
-                              : connectivity.online
-                                  ? (_syncDone ? const Color(0xFF10B981) : const Color(0xFF6C53F5))
-                                  : Colors.red,
                         ),
                       ),
                     ],
@@ -360,97 +363,544 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-
-            // Offline Mod Toggle button
-            GestureDetector(
-              onTap: _syncing ? null : _toggleOfflineMode,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                decoration: BoxDecoration(
-                  color: isOffline
-                      ? Colors.orange.withValues(alpha: 0.1)
-                      : const Color(0xFF6C53F5).withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isOffline
-                        ? Colors.orange.withValues(alpha: 0.3)
-                        : const Color(0xFF6C53F5).withValues(alpha: 0.15),
+            // İçerik
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Container(
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1730),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.4), width: 2),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Ünlem ikonu
+                        Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDC2626).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 42),
+                        ),
+                        const SizedBox(height: 22),
+                        // Başlık
+                        const Text(
+                          'Hesabınız Pasife Alındı',
+                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 12),
+                        // Açıklama
+                        const Text(
+                          'Hesabınız yönetici tarafından pasife alınmıştır. Sisteme erişiminiz geçici olarak durdurulmuştur.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white60, fontSize: 15.5, height: 1.5),
+                        ),
+                        const SizedBox(height: 22),
+                        // Admin iletişim notu
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDC2626).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.support_agent, color: Color(0xFFFCA5A5), size: 19),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Lütfen yöneticinizle iletişime geçin.',
+                                  style: TextStyle(color: Color(0xFFFCA5A5), fontSize: 13, fontWeight: FontWeight.w600, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        // Çıkış yap butonu
+                        GestureDetector(
+                          onTap: () async {
+                            await ref.read(authProvider.notifier).cikisYap();
+                            if (context.mounted) context.go('/login');
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.logout, color: Colors.white60, size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Çıkış Yap',
+                                  style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Kullanıcının herhangi bir yetkisi var mı?
+    final authNotifier = ref.read(authProvider.notifier);
+    final isAdmin = auth.kullanici?.rol == 'admin';
+    final hasAnyPermission = isAdmin ||
+        authNotifier.hasYetki('urun', 'goruntule') ||
+        authNotifier.hasYetki('sayim', 'goruntule') ||
+        authNotifier.hasYetki('depo', 'goruntule') ||
+        authNotifier.hasYetki('toplam_sayim', 'goruntule');
+
+    if (hasAnyPermission) {
+      return AppLayout(
+        showSettings: true,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              // Verileri Güncelle button (normal)
+              GestureDetector(
+                onTap: syncEnabled ? _syncData : null,
+                child: Opacity(
+                  opacity: syncEnabled ? 1.0 : 0.5,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: _syncDone
+                                ? const Color(0xFF10B981)
+                                : isOffline
+                                    ? Colors.orange
+                                    : const Color(0xFF6C53F5),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_syncDone
+                                        ? const Color(0xFF10B981)
+                                        : isOffline
+                                            ? Colors.orange
+                                            : const Color(0xFF6C53F5))
+                                    .withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: _syncing
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                )
+                              : Icon(
+                                  _syncDone ? Icons.check : Icons.sync,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _syncing
+                                    ? 'Güncelleniyor...'
+                                    : _syncDone
+                                        ? 'Tamamlandı!'
+                                        : 'Verileri Güncelle',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1F2937),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _syncStats.isNotEmpty
+                                    ? _syncStats
+                                    : isOffline
+                                        ? 'Çevrimiçi moda dönünce aktif olur'
+                                        : 'Tüm verileri senkronize et',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isOffline
+                                ? Colors.orange
+                                : connectivity.online
+                                    ? (_syncDone ? const Color(0xFF10B981) : const Color(0xFF6C53F5))
+                                    : Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Offline Mod Toggle button
+              GestureDetector(
+                onTap: _syncing ? null : _toggleOfflineMode,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: isOffline
+                        ? Colors.orange.withValues(alpha: 0.1)
+                        : const Color(0xFF6C53F5).withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isOffline
+                          ? Colors.orange.withValues(alpha: 0.3)
+                          : const Color(0xFF6C53F5).withValues(alpha: 0.15),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isOffline ? Icons.wifi : Icons.wifi_off,
+                        color: isOffline ? Colors.orange : const Color(0xFF6C53F5),
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          isOffline ? 'Çevrimiçi Moda Dön' : 'Offline Moda Geç',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isOffline ? Colors.orange.shade700 : const Color(0xFF6C53F5),
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: isOffline ? Colors.orange.withValues(alpha: 0.5) : const Color(0xFF6C53F5).withValues(alpha: 0.4),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Grid Cards
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.6,
+                  children: [
+                    _NavCard(
+                      icon: Icons.business,
+                      label: 'İşletmeler',
+                      onTap: _showIsletmeler,
+                    ),
+                    if (authNotifier.hasYetki('urun', 'goruntule'))
+                      _NavCard(
+                        icon: Icons.inventory_2,
+                        label: 'Stoklar',
+                        onTap: () => context.push('/stoklar'),
+                      ),
+                    if (authNotifier.hasYetki('sayim', 'goruntule'))
+                      _NavCard(
+                        icon: Icons.assignment,
+                        label: 'Sayımlar',
+                        onTap: () => context.push('/sayimlar'),
+                      ),
+                    if (authNotifier.hasYetki('depo', 'goruntule'))
+                      _NavCard(
+                        icon: Icons.warehouse,
+                        label: 'Depolar',
+                        onTap: () => context.push('/depolar'),
+                      ),
+                    if (authNotifier.hasYetki('toplam_sayim', 'goruntule'))
+                      _NavCard(
+                        icon: Icons.calculate,
+                        label: 'Toplam Sayımlar',
+                        onTap: () => context.push('/toplanmis-sayimlar'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── YETKİSİZ KULLANICI — DARK EKRAN ──
+    return Scaffold(
+      backgroundColor: const Color(0xFF121020),
+      body: Column(
+        children: [
+          // Dark header
+          Container(
+            color: const Color(0xFF1A1730),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                 child: Row(
                   children: [
-                    Icon(
-                      isOffline ? Icons.wifi : Icons.wifi_off,
-                      color: isOffline ? Colors.orange : const Color(0xFF6C53F5),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        isOffline ? 'Çevrimiçi Moda Dön' : 'Offline Moda Geç',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: isOffline ? Colors.orange.shade700 : const Color(0xFF6C53F5),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          (auth.kullanici?.adSoyad ?? '?').isNotEmpty
+                              ? (auth.kullanici?.adSoyad ?? '?')[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
-                    Icon(
-                      Icons.chevron_right,
-                      color: isOffline ? Colors.orange.withValues(alpha: 0.5) : const Color(0xFF6C53F5).withValues(alpha: 0.4),
-                      size: 20,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            auth.kullanici?.adSoyad ?? 'Kullanıcı',
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Depo Kullanıcısı',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+          ),
+          // Content
+          Expanded(
+            child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Verileri Güncelle button (dark + glow)
+            AnimatedBuilder(
+              animation: _glowController,
+              builder: (context, child) {
+                final glow = _glowController.value;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: GestureDetector(
+                  onTap: _syncData,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1730),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3 + glow * 0.4), width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.orange.withValues(alpha: 0.05 + glow * 0.15),
+                          blurRadius: 8 + glow * 12,
+                          spreadRadius: glow * 2,
+                        ),
+                      ],
+                    ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _yetkiYok
+                            ? const Color(0xFFDC2626)
+                            : _syncDone
+                                ? const Color(0xFF10B981)
+                                : Colors.orange,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_yetkiYok
+                                ? const Color(0xFFDC2626)
+                                : _syncDone
+                                    ? const Color(0xFF10B981)
+                                    : Colors.orange).withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: _syncing
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                            )
+                          : Icon(
+                              _yetkiYok ? Icons.error_outline : (_syncDone ? Icons.check : Icons.sync),
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _syncing
+                                ? 'Güncelleniyor...'
+                                : _yetkiYok
+                                    ? 'Yetki Atanmadı'
+                                    : _syncDone
+                                        ? 'Tamamlandı!'
+                                        : 'Verileri Güncelle',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: _yetkiYok ? const Color(0xFFFCA5A5) : Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _syncStats.isNotEmpty ? _syncStats : 'Yetki atandıktan sonra buraya basın',
+                            style: TextStyle(fontSize: 12, color: _yetkiYok ? const Color(0xFFFCA5A5).withValues(alpha: 0.6) : Colors.white38),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _yetkiYok
+                            ? const Color(0xFFDC2626)
+                            : connectivity.online
+                                ? (_syncDone ? const Color(0xFF10B981) : Colors.orange)
+                                : Colors.red,
+                      ),
+                    ),
+                  ],
+                ), // Row
+              ), // Container
+            ), // GestureDetector
+              ); // Padding — return
+              }, // builder
+            ), // AnimatedBuilder
+            const SizedBox(height: 32),
 
-            // Grid Cards
-            Expanded(
-              child: GridView.count(
-              crossAxisCount: 2,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.6,
-              children: [
-                _NavCard(
-                  icon: Icons.business,
-                  label: 'İşletmeler',
-                  onTap: _showIsletmeler,
-                ),
-                if (ref.read(authProvider.notifier).hasYetki('urun', 'goruntule'))
-                  _NavCard(
-                    icon: Icons.inventory_2,
-                    label: 'Stoklar',
-                    onTap: () => context.push('/stoklar'),
+            // Yetki yok — uyarı ekranı
+            Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1730),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.4), width: 2),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // İkon
+                        Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: const Icon(Icons.lock_outline, color: Colors.orange, size: 38),
+                        ),
+                        const SizedBox(height: 22),
+                        // Başlık
+                        const Text(
+                          'Yetki Atanmamış',
+                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 12),
+                        // Açıklama
+                        const Text(
+                          'Hesabınıza henüz herhangi bir işletme yetkisi atanmamış. Yöneticinizle iletişime geçin.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white60, fontSize: 15.5, height: 1.5),
+                        ),
+                        const SizedBox(height: 22),
+                        // Bilgi notu
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.orange, size: 19),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Yetki atandıktan sonra yukarıdaki güncelle butonuna basarak verileri yenileyebilirsiniz.',
+                                  style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                if (ref.read(authProvider.notifier).hasYetki('sayim', 'goruntule'))
-                  _NavCard(
-                    icon: Icons.assignment,
-                    label: 'Sayımlar',
-                    onTap: () => context.push('/sayimlar'),
-                  ),
-                if (ref.read(authProvider.notifier).hasYetki('depo', 'goruntule'))
-                  _NavCard(
-                    icon: Icons.warehouse,
-                    label: 'Depolar',
-                    onTap: () => context.push('/depolar'),
-                  ),
-                if (ref.read(authProvider.notifier).hasYetki('toplam_sayim', 'goruntule'))
-                  _NavCard(
-                    icon: Icons.calculate,
-                    label: 'Toplam Sayımlar',
-                    onTap: () => context.push('/toplanmis-sayimlar'),
-                  ),
-              ],
-            ),
-            ),
           ],
         ),
+      ),
+          ),
+        ],
       ),
     );
   }

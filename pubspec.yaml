@@ -50,6 +50,7 @@ dependencies:
   vibration: ^3.1.8
   path: ^1.9.1
   audioplayers: ^6.1.0
+  excel: ^4.0.6
 
 dev_dependencies:
   flutter_test:

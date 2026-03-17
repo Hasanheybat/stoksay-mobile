@@ -66,7 +66,7 @@ class _SayimlarScreenState extends ConsumerState<SayimlarScreen> {
           .where((s) => s['durum'] != 'silindi')
           .map((s) => Sayim.fromJson(s))
           .toList();
-      sayimlar.sort((a, b) => (b.tarih ?? '').compareTo(a.tarih ?? ''));
+      // Backend zaten created_at DESC sıralı gönderiyor, ekstra sıralama gereksiz
       setState(() {
         _sayimlar = sayimlar;
         _yukleniyor = false;
@@ -368,7 +368,12 @@ class _SayimlarScreenState extends ConsumerState<SayimlarScreen> {
                                                     }
                                                   });
                                                 }
-                                              : null,
+                                              : () async {
+                                                  final result = await context.push('/sayim/${s.id}');
+                                                  if (result == true && _seciliIsletmeId != null) {
+                                                    _fetchSayimlar(_seciliIsletmeId!);
+                                                  }
+                                                },
                                         ),
                                       ),
                                     ),
@@ -676,8 +681,10 @@ class _SayimCard extends StatelessWidget {
                   children: [
                     const Icon(Icons.business, size: 14, color: Color(0xFF9CA3AF)),
                     const SizedBox(width: 4),
-                    Text(isletmeAd, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
-                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(isletmeAd, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)), overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
@@ -689,7 +696,7 @@ class _SayimCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Color(0xFF9CA3AF)),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Text(_formatTarih(sayim.tarih), style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
                   ],
                 ),

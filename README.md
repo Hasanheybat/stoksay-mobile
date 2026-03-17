@@ -1,4 +1,4 @@
-# StokSay Mobile v4.0
+# StokSay Mobile v4.1.1
 
 Depo sayim yonetim uygulamasinin Flutter mobil istemcisi. Tam offline/online mod destegi ile internet baglantisi olmadan da calismaya devam eder.
 
@@ -10,6 +10,10 @@ Depo sayim yonetim uygulamasinin Flutter mobil istemcisi. Tam offline/online mod
 - **Sayim Islemleri**: Sayim olusturma, kalem ekleme, tamamlama, birlestirme (topla)
 - **Coklu Isletme**: Birden fazla isletme arasinda gecis
 - **Senkronizasyon**: Push-first-then-pull stratejisi ile veri tutarliligi
+- **Pasif Kullanici Ekrani**: 403 algilama, dark ekran, cikis yap butonu, admin iletisim uyarisi
+- **Yetkisiz Kullanici Ekrani**: Dark tema, animasyonlu guncelle butonu, yetki ataninca normale donus
+- **Offline Cikis Engeli**: Offline modda cikis yapilarak veri kaybi onlenir
+- **Excel (XLSX) Export**: Gercek xlsx formati ile sayim paylasimi
 
 ## Teknik Yapi
 
@@ -118,6 +122,7 @@ API adresi `lib/services/api_service.dart` icinde tanimlidir:
 
 | Versiyon | Aciklama |
 |----------|----------|
+| v4.1.1 | Pasif kullanici ekrani, yetkisiz ekran, offline cikis engeli, XLSX export |
 | v4.0 | Offline/Online mod, senkronizasyon, aktif sayim korumasi |
 | v3.3 | Sayim birlestirme, toplu islemler, guvenlik guncellemesi |
 | v3.0 | Coklu isletme destegi |

@@ -14,6 +14,7 @@ class AuthState {
   final bool yukleniyor;
   final String? hata;
   final bool cacheFallback;
+  final bool pasif; // Kullanıcı pasife alınmış mı
 
   AuthState({
     this.kullanici,
@@ -21,6 +22,7 @@ class AuthState {
     this.yukleniyor = true,
     this.hata,
     this.cacheFallback = false,
+    this.pasif = false,
   });
 
   AuthState copyWith({
@@ -29,6 +31,7 @@ class AuthState {
     bool? yukleniyor,
     String? hata,
     bool? cacheFallback,
+    bool? pasif,
   }) {
     return AuthState(
       kullanici: kullanici ?? this.kullanici,
@@ -36,6 +39,7 @@ class AuthState {
       yukleniyor: yukleniyor ?? this.yukleniyor,
       hata: hata,
       cacheFallback: cacheFallback ?? this.cacheFallback,
+      pasif: pasif ?? this.pasif,
     );
   }
 }
@@ -82,6 +86,17 @@ class AuthNotifier extends Notifier<AuthState> {
       try { await _cacheYaz(kullanici, yetkilerMap); } catch (_) {}
       state = AuthState(kullanici: kullanici, yetkilerMap: yetkilerMap, yukleniyor: false);
     } catch (e) {
+      // 403 = kullanıcı pasife alınmış → cache'e düşürme, pasif ekranı göster
+      if (e is DioException && e.response?.statusCode == 403) {
+        final cached = await _cacheOku();
+        state = AuthState(
+          kullanici: cached?['kullanici'],
+          yetkilerMap: const {},
+          yukleniyor: false,
+          pasif: true,
+        );
+        return;
+      }
       Map<String, dynamic>? cached;
       try { cached = await _cacheOku(); } catch (_) {}
       if (cached != null) {
