@@ -68,8 +68,10 @@ class SyncService {
             whereArgs: [isletmeId]);
           await db.delete('depolar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
           for (final d in depolar) {
+            final did = d['id']?.toString() ?? '';
+            if (did.isEmpty) continue;
             await db.insert('depolar', {
-              'id': d['id']?.toString() ?? '',
+              'id': did,
               'ad': d['ad'],
               'konum': d['konum'],
               'isletme_id': isletmeId,
@@ -84,8 +86,10 @@ class SyncService {
         } else {
           await db.delete('depolar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
           for (final d in depolar) {
+            final did = d['id']?.toString() ?? '';
+            if (did.isEmpty) continue;
             await db.insert('depolar', {
-              'id': d['id']?.toString() ?? '',
+              'id': did,
               'ad': d['ad'],
               'konum': d['konum'],
               'isletme_id': isletmeId,
@@ -274,6 +278,10 @@ class SyncService {
   /// Temp ID eşleme ile referansları günceller.
   static Future<SyncResult> kuyruguGonder() async {
     final db = await DatabaseHelper.database;
+
+    // 3+ kez basarisiz olan kayitlari temizle
+    await db.delete('sync_queue', where: 'hata_sayisi >= 3');
+
     final bekleyenler = await db.query(
       'sync_queue',
       where: "durum IN ('bekliyor', 'hata')",
@@ -301,16 +309,15 @@ class SyncService {
       final aciklama = _islemAciklamasi(tablo, islem, veri);
 
       try {
+        // API çağrısı + local DB güncelleme
+        dynamic apiResult;
+        String? tempId;
+
         switch (tablo) {
           case 'depolar':
             if (islem == 'ekle') {
-              final result = await DepoService.ekleOnline(veri['isletme_id'], veri['ad'], konum: veri['konum']);
-              final tempId = veri['_temp_id'];
-              if (tempId != null && result['id'] != null) {
-                tempIdMap[tempId] = result['id'];
-                await db.update('depolar', {'id': result['id']}, where: 'id = ?', whereArgs: [tempId]);
-                await _updateQueueRefs(db, tempId, result['id']);
-              }
+              apiResult = await DepoService.ekleOnline(veri['isletme_id'], veri['ad'], konum: veri['konum']);
+              tempId = veri['_temp_id']?.toString();
             } else if (islem == 'guncelle') {
               await DepoService.guncelleOnline(veri['id'], veri);
             } else if (islem == 'sil') {
@@ -320,14 +327,8 @@ class SyncService {
 
           case 'urunler':
             if (islem == 'ekle') {
-              final result = await UrunService.ekleOnline(veri);
-              final tempId = veri['_temp_id'];
-              if (tempId != null && result['id'] != null) {
-                tempIdMap[tempId] = result['id'];
-                await db.update('urunler', {'id': result['id']}, where: 'id = ?', whereArgs: [tempId]);
-                await db.update('sayim_kalemleri', {'urun_id': result['id']}, where: 'urun_id = ?', whereArgs: [tempId]);
-                await _updateQueueRefs(db, tempId, result['id']);
-              }
+              apiResult = await UrunService.ekleOnline(veri);
+              tempId = veri['_temp_id']?.toString();
             } else if (islem == 'guncelle') {
               await UrunService.guncelleOnline(veri['id'], veri);
             } else if (islem == 'sil') {
@@ -337,14 +338,8 @@ class SyncService {
 
           case 'sayimlar':
             if (islem == 'ekle') {
-              final result = await SayimService.olusturOnline(veri);
-              final tempId = veri['_temp_id'];
-              if (tempId != null && result['id'] != null) {
-                tempIdMap[tempId] = result['id'];
-                await db.update('sayimlar', {'id': result['id']}, where: 'id = ?', whereArgs: [tempId]);
-                await db.update('sayim_kalemleri', {'sayim_id': result['id']}, where: 'sayim_id = ?', whereArgs: [tempId]);
-                await _updateQueueRefs(db, tempId, result['id']);
-              }
+              apiResult = await SayimService.olusturOnline(veri);
+              tempId = veri['_temp_id']?.toString();
             } else if (islem == 'guncelle') {
               await SayimService.guncelleOnline(veri['id'], veri);
             } else if (islem == 'sil') {
@@ -352,29 +347,19 @@ class SyncService {
             } else if (islem == 'tamamla') {
               await SayimService.tamamlaOnline(veri['id']);
             } else if (islem == 'topla') {
-              final result = await SayimService.toplaOnline(
+              apiResult = await SayimService.toplaOnline(
                 sayimIdleri: List<String>.from(veri['sayim_idleri']),
                 ad: veri['ad'],
                 isletmeId: veri['isletme_id'],
               );
-              final tempId = veri['_temp_id'];
-              if (tempId != null && result['id'] != null) {
-                tempIdMap[tempId] = result['id'];
-                await db.update('sayimlar', {'id': result['id']}, where: 'id = ?', whereArgs: [tempId]);
-                await _updateQueueRefs(db, tempId, result['id']);
-              }
+              tempId = veri['_temp_id']?.toString();
             }
             break;
 
           case 'sayim_kalemleri':
             if (islem == 'ekle') {
-              final result = await SayimService.kalemEkleOnline(veri['sayim_id'], veri);
-              final tempId = veri['_temp_id'];
-              if (tempId != null && result['id'] != null) {
-                tempIdMap[tempId] = result['id'];
-                await db.update('sayim_kalemleri', {'id': result['id']}, where: 'id = ?', whereArgs: [tempId]);
-                await _updateQueueRefs(db, tempId, result['id']);
-              }
+              apiResult = await SayimService.kalemEkleOnline(veri['sayim_id'], veri);
+              tempId = veri['_temp_id']?.toString();
             } else if (islem == 'guncelle') {
               await SayimService.kalemGuncelleOnline(veri['sayim_id'], veri['id'], veri);
             } else if (islem == 'sil') {
@@ -382,10 +367,34 @@ class SyncService {
             }
             break;
         }
-        await db.delete('sync_queue', where: 'id = ?', whereArgs: [id]);
+
+        // Local DB güncellemelerini transaction ile yap (atomik)
+        await db.transaction((txn) async {
+          if (tempId != null && apiResult is Map && apiResult['id'] != null) {
+            final realId = apiResult['id'];
+            tempIdMap[tempId] = realId;
+            if (tablo == 'depolar') {
+              await txn.update('depolar', {'id': realId}, where: 'id = ?', whereArgs: [tempId]);
+            } else if (tablo == 'urunler') {
+              await txn.update('urunler', {'id': realId}, where: 'id = ?', whereArgs: [tempId]);
+              await txn.update('sayim_kalemleri', {'urun_id': realId}, where: 'urun_id = ?', whereArgs: [tempId]);
+            } else if (tablo == 'sayimlar') {
+              await txn.update('sayimlar', {'id': realId}, where: 'id = ?', whereArgs: [tempId]);
+              await txn.update('sayim_kalemleri', {'sayim_id': realId}, where: 'sayim_id = ?', whereArgs: [tempId]);
+            } else if (tablo == 'sayim_kalemleri') {
+              await txn.update('sayim_kalemleri', {'id': realId}, where: 'id = ?', whereArgs: [tempId]);
+            }
+          }
+          await txn.delete('sync_queue', where: 'id = ?', whereArgs: [id]);
+        });
+
+        // Queue refs güncelle (transaction dışı — diğer queue item'ları)
+        if (tempId != null && apiResult is Map && apiResult['id'] != null) {
+          await _updateQueueRefs(db, tempId, apiResult['id']);
+        }
         basarili++;
       } catch (e) {
-        await db.update('sync_queue', {'durum': 'hata'}, where: 'id = ?', whereArgs: [id]);
+        await db.rawUpdate('UPDATE sync_queue SET durum = ?, hata_sayisi = hata_sayisi + 1 WHERE id = ?', ['hata', id]);
         basarisiz++;
         hatalar.add('$aciklama: ${_hataAciklamasi(e)}');
       }
@@ -486,13 +495,15 @@ class SyncService {
   /// Negatif ID'ye ait sync_queue kaydını sil (offline'da oluşturup silinen öğe)
   static Future<void> kuyruguTemizle(String tablo, dynamic tempId) async {
     final db = await DatabaseHelper.database;
-    // Temp ID'li tüm kayıtları bul ve sil
-    final rows = await db.query('sync_queue',
-      where: "tablo = ? AND veri LIKE ?",
-      whereArgs: [tablo, '%"_temp_id":"$tempId"%'],
-    );
+    final idStr = tempId.toString();
+    final rows = await db.query('sync_queue', where: "tablo = ?", whereArgs: [tablo]);
     for (final row in rows) {
-      await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
+      try {
+        final veri = Map<String, dynamic>.from(jsonDecode(row['veri'] as String));
+        if (veri['_temp_id']?.toString() == idStr) {
+          await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
+        }
+      } catch (_) {}
     }
   }
 
@@ -500,21 +511,25 @@ class SyncService {
   static Future<void> kuyruguTemizleSayimKalemleri(dynamic sayimId) async {
     final db = await DatabaseHelper.database;
     final idStr = sayimId.toString();
-    // sayim_kalemleri tablosundaki tüm queue kayıtlarını bul (sayim_id referansı ile)
-    final rows = await db.query('sync_queue',
-      where: "tablo = 'sayim_kalemleri' AND veri LIKE ?",
-      whereArgs: ['%"sayim_id":"$idStr"%'],
-    );
+    // sayim_kalemleri queue kayıtlarını temizle
+    final rows = await db.query('sync_queue', where: "tablo = 'sayim_kalemleri'");
     for (final row in rows) {
-      await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
+      try {
+        final veri = Map<String, dynamic>.from(jsonDecode(row['veri'] as String));
+        if (veri['sayim_id']?.toString() == idStr) {
+          await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
+        }
+      } catch (_) {}
     }
-    // Ayrıca sayımla ilgili tamamla/guncelle/sil queue kayıtlarını da temizle
-    final sayimRows = await db.query('sync_queue',
-      where: "tablo = 'sayimlar' AND veri LIKE ?",
-      whereArgs: ['%"id":"$idStr"%'],
-    );
+    // Sayımla ilgili tamamla/guncelle/sil queue kayıtlarını da temizle
+    final sayimRows = await db.query('sync_queue', where: "tablo = 'sayimlar'");
     for (final row in sayimRows) {
-      await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
+      try {
+        final veri = Map<String, dynamic>.from(jsonDecode(row['veri'] as String));
+        if (veri['id']?.toString() == idStr) {
+          await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
+        }
+      } catch (_) {}
     }
   }
 

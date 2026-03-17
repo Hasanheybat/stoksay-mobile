@@ -19,6 +19,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _syncing = false;
   bool _syncDone = false;
   String _syncStats = '';
+  bool _cacheBildirimGosterildi = false;
 
   Future<void> _syncData() async {
     if (_syncing) return;
@@ -235,6 +236,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
+    if (auth.cacheFallback && !_cacheBildirimGosterildi) {
+      _cacheBildirimGosterildi = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          showBildirim(context, 'Cevrimdisi veri gosteriliyor', tip: BildirimTip.bilgi);
+        }
+      });
+    }
+
     final connectivity = ref.watch(connectivityProvider);
     final isOffline = connectivity.offlineMode;
     final hasPending = connectivity.bekleyenSync > 0;

@@ -24,6 +24,10 @@ class ApiService {
         if (error.response?.statusCode == 401) {
           await StorageService.removeToken();
         }
+        // 500 hatalarında sunucu detaylarını gizle
+        if (error.response?.statusCode != null && error.response!.statusCode! >= 500) {
+          error.response!.data = {'hata': 'Sunucu hatasi. Lutfen tekrar deneyin.'};
+        }
         handler.next(error);
       },
     ));

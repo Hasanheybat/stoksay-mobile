@@ -14,7 +14,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'stoksay.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -33,6 +33,10 @@ class DatabaseHelper {
         if (oldVersion < 3) {
           // v2→v3: sayimlar'a depo_adi eklendi, urunler'den kategori silindi
           try { await db.execute('ALTER TABLE sayimlar ADD COLUMN depo_adi TEXT'); } catch (_) {}
+        }
+        if (oldVersion < 4) {
+          // v3→v4: sync_queue'ya hata_sayisi eklendi
+          try { await db.execute('ALTER TABLE sync_queue ADD COLUMN hata_sayisi INTEGER DEFAULT 0'); } catch (_) {}
         }
       },
     );
@@ -122,7 +126,8 @@ class DatabaseHelper {
         islem TEXT NOT NULL,
         veri TEXT NOT NULL,
         olusturma TEXT NOT NULL,
-        durum TEXT DEFAULT 'bekliyor'
+        durum TEXT DEFAULT 'bekliyor',
+        hata_sayisi INTEGER DEFAULT 0
       )
     ''');
     await db.execute('CREATE INDEX idx_sync_durum ON sync_queue(durum)');

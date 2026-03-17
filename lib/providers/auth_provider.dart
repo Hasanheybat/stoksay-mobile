@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:sqflite/sqflite.dart';
@@ -12,12 +13,14 @@ class AuthState {
   final Map<String, dynamic> yetkilerMap;
   final bool yukleniyor;
   final String? hata;
+  final bool cacheFallback;
 
   AuthState({
     this.kullanici,
     this.yetkilerMap = const {},
     this.yukleniyor = true,
     this.hata,
+    this.cacheFallback = false,
   });
 
   AuthState copyWith({
@@ -25,19 +28,35 @@ class AuthState {
     Map<String, dynamic>? yetkilerMap,
     bool? yukleniyor,
     String? hata,
+    bool? cacheFallback,
   }) {
     return AuthState(
       kullanici: kullanici ?? this.kullanici,
       yetkilerMap: yetkilerMap ?? this.yetkilerMap,
       yukleniyor: yukleniyor ?? this.yukleniyor,
       hata: hata,
+      cacheFallback: cacheFallback ?? this.cacheFallback,
     );
   }
 }
 
 class AuthNotifier extends Notifier<AuthState> {
+  AppLifecycleListener? _lifecycleListener;
+
   @override
   AuthState build() => AuthState();
+
+  /// App foreground'a geldiğinde yetkileri yeniden kontrol eder
+  void initLifecycleObserver() {
+    _lifecycleListener?.dispose();
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () {
+        if (StorageService.hasToken) {
+          oturumKontrol();
+        }
+      },
+    );
+  }
 
   Future<void> oturumKontrol() async {
     state = state.copyWith(yukleniyor: true, hata: null);
@@ -66,7 +85,7 @@ class AuthNotifier extends Notifier<AuthState> {
       Map<String, dynamic>? cached;
       try { cached = await _cacheOku(); } catch (_) {}
       if (cached != null) {
-        state = AuthState(kullanici: cached['kullanici'], yetkilerMap: cached['yetkilerMap'], yukleniyor: false);
+        state = AuthState(kullanici: cached['kullanici'], yetkilerMap: cached['yetkilerMap'], yukleniyor: false, cacheFallback: true);
       } else {
         await StorageService.removeToken();
         state = AuthState(yukleniyor: false, hata: 'Oturum dogrulanamadi');

@@ -32,6 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _oturumKontrol() async {
     final auth = ref.read(authProvider.notifier);
     await auth.oturumKontrol();
+    auth.initLifecycleObserver();
     final state = ref.read(authProvider);
     if (state.kullanici != null && mounted) {
       await ref.read(isletmeProvider.notifier).yukle();
@@ -45,6 +46,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final sifre = _sifreController.text.trim();
     if (email.isEmpty || sifre.isEmpty) {
       _snackBar('Email ve sifre zorunludur.');
+      return;
+    }
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      _snackBar('Gecerli bir email adresi giriniz.');
+      return;
+    }
+    if (sifre.length < 8) {
+      _snackBar('Sifre en az 8 karakter olmalidir.');
       return;
     }
 
