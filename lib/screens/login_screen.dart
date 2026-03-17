@@ -211,6 +211,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   Text('StokSay v2.0.0',
                       style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3))),
                   const SizedBox(height: 32),

@@ -61,9 +61,7 @@ class _ToplanmisSayimlarScreenState
     try {
       final data = await SayimService.toplanmisListele(_seciliIsletmeId!);
       if (mounted) setState(() => _sayimlar = data);
-    } catch (e) {
-      debugPrint('toplanmis fetch error: $e');
-    }
+    } catch (_) {}
     if (mounted) setState(() => _yukleniyor = false);
   }
 
@@ -914,6 +912,9 @@ class _ToplanmisSilOnaySheetState extends State<_ToplanmisSilOnaySheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _siliniyor = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Silinemedi: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 

@@ -7,7 +7,6 @@ class Urun {
   final String urunAdi;
   final String? isim2;
   final String? birim;
-  final String? kategori;
   final List<String> barkodlar;
   final bool aktif;
 
@@ -18,7 +17,6 @@ class Urun {
     required this.urunAdi,
     this.isim2,
     this.birim,
-    this.kategori,
     this.barkodlar = const [],
     this.aktif = true,
   });
@@ -47,7 +45,6 @@ class Urun {
         urunAdi: json['urun_adi']?.toString() ?? '',
         isim2: json['isim_2']?.toString(),
         birim: json['birim']?.toString(),
-        kategori: json['kategori']?.toString(),
         barkodlar: parseBarkodlar(json['barkodlar']),
         aktif: json['aktif'] == true || json['aktif'] == 1,
       );
@@ -63,7 +60,6 @@ class Urun {
     'urun_adi': urunAdi,
     'isim_2': isim2,
     'birim': birim,
-    'kategori': kategori,
     'barkodlar': barkodlar,
     'aktif': aktif,
   };

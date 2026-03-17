@@ -35,7 +35,10 @@ class IsletmeNotifier extends Notifier<IsletmeState> {
         await db.delete('isletmeler');
         for (final i in isletmeler) {
           await db.insert('isletmeler', {
-            ...i.toJson(),
+            'id': i.id,
+            'ad': i.ad,
+            'kod': i.kod,
+            'aktif': i.aktif ? 1 : 0,
             'son_guncelleme': DateTime.now().toIso8601String(),
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }

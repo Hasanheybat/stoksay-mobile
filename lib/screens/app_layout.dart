@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../providers/connectivity_provider.dart';
 
 class AppLayout extends ConsumerWidget {
   final Widget child;
@@ -190,6 +191,43 @@ class AppLayout extends ConsumerWidget {
               ),
             ),
           ),
+          // Offline mod badge
+          if (ref.watch(connectivityProvider).offlineMode)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              color: Colors.orange.withValues(alpha: 0.15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.orange.shade700, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'ÇEVRİMDIŞI MOD',
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  if (ref.watch(connectivityProvider).bekleyenSync > 0) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade700,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${ref.watch(connectivityProvider).bekleyenSync}',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           // Page content
           Expanded(child: child),
         ],

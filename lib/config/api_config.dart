@@ -4,7 +4,7 @@ class ApiConfig {
   static const bool _isProd = bool.fromEnvironment('PROD', defaultValue: false);
 
   static const String _prodUrl = 'https://stoksay.com/api';
-  static const String _devUrl = 'http://172.22.23.243:3001/api';
+  static const String _devUrl = 'http://192.168.100.91:3001/api';
 
   static String get baseUrl => _isProd ? _prodUrl : _devUrl;
 

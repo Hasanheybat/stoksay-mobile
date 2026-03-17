@@ -5,7 +5,11 @@ import '../providers/auth_provider.dart';
 import '../providers/isletme_provider.dart';
 import '../models/isletme.dart';
 import '../services/urun_service.dart';
+import '../services/storage_service.dart';
+import '../services/offline_id_service.dart';
+import '../services/depo_service.dart' show AktifSayimException;
 import '../widgets/bildirim.dart';
+import '../widgets/aktif_sayim_dialog.dart';
 import 'app_layout.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -172,8 +176,15 @@ class _StoklarScreenState extends ConsumerState<StoklarScreen> {
 
   void _showStokDuzenle(Map<String, dynamic> urun) {
     final auth = ref.read(authProvider.notifier);
-    final canEdit = _seciliIsletmeId != null && auth.isletmeYetkisi(_seciliIsletmeId!, 'urun', 'duzenle');
-    final canDelete = _seciliIsletmeId != null && auth.isletmeYetkisi(_seciliIsletmeId!, 'urun', 'sil');
+    final isOffline = StorageService.isOffline;
+    final isTempUrun = OfflineIdService.isTempId(urun['id']);
+    // Offline'da sadece temp ürünler düzenlenebilir/silinebilir
+    final canEdit = _seciliIsletmeId != null
+        && auth.isletmeYetkisi(_seciliIsletmeId!, 'urun', 'duzenle')
+        && (!isOffline || isTempUrun);
+    final canDelete = _seciliIsletmeId != null
+        && auth.isletmeYetkisi(_seciliIsletmeId!, 'urun', 'sil')
+        && (!isOffline || isTempUrun);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -348,10 +359,15 @@ class _StoklarScreenState extends ConsumerState<StoklarScreen> {
                                 itemCount: _filtreliUrunler.length,
                                 itemBuilder: (ctx, i) {
                                   final u = _filtreliUrunler[i];
-                                  final canDuzenle = _seciliIsletmeId != null && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'urun', 'duzenle');
+                                  final isOffline = StorageService.isOffline;
+                                  final isTempUrun = OfflineIdService.isTempId(u['id']);
+                                  final canDuzenle = _seciliIsletmeId != null
+                                      && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'urun', 'duzenle')
+                                      && (!isOffline || isTempUrun); // Offline'da sadece temp ürünler düzenlenebilir
                                   return _UrunCard(
                                     urun: u,
                                     onDuzenle: canDuzenle ? () => _showStokDuzenle(u) : null,
+                                    soluk: isOffline && !isTempUrun, // Sunucu ürünleri soluk
                                   );
                                 },
                               ),
@@ -366,21 +382,23 @@ class _StoklarScreenState extends ConsumerState<StoklarScreen> {
 class _UrunCard extends StatelessWidget {
   final Map<String, dynamic> urun;
   final VoidCallback? onDuzenle;
-  const _UrunCard({required this.urun, this.onDuzenle});
+  final bool soluk;
+  const _UrunCard({required this.urun, this.onDuzenle, this.soluk = false});
 
   @override
   Widget build(BuildContext context) {
     final ad = urun['urun_adi'] ?? '';
     final isim2 = urun['isim_2'];
     final kod = urun['urun_kodu'] ?? '';
-    final kategori = urun['kategori'];
     final birim = urun['birim'] ?? '';
 
-    return Container(
+    return Opacity(
+      opacity: soluk ? 0.45 : 1.0,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: soluk ? const Color(0xFFF9FAFB) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFF3F4F6)),
         boxShadow: [
@@ -393,7 +411,7 @@ class _UrunCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Sol: İsim + birim + kod + kategori
+          // Sol: İsim + birim + kod
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,24 +471,6 @@ class _UrunCard extends StatelessWidget {
                         fontFamily: 'monospace',
                       ),
                     ),
-                    if (kategori != null && kategori.toString().isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: _PL,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          kategori,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: _P,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ],
@@ -494,6 +494,7 @@ class _UrunCard extends StatelessWidget {
           ],
         ],
       ),
+    ),
     );
   }
 }
@@ -1284,7 +1285,7 @@ class _StokDuzenleSheetState extends State<_StokDuzenleSheet> {
     final navigator = Navigator.of(context);
     final urunId = widget.urun['id'];
     try {
-      await UrunService.sil(urunId);
+      await UrunService.sil(urunId, isletmeId: widget.urun['isletme_id']?.toString());
       navigator.pop();
       if (widget.onSilindi != null) {
         widget.onSilindi!();
@@ -1293,14 +1294,27 @@ class _StokDuzenleSheetState extends State<_StokDuzenleSheet> {
       }
     } catch (e) {
       if (!mounted) return;
-      String hata = 'Sunucuya bağlanılamadı.';
+      if (e is AktifSayimException) {
+        AktifSayimDialog.show(
+          context,
+          baslik: 'Ürün Silinemedi',
+          mesaj: e.mesaj,
+          sayimAdlari: e.sayimAdlari,
+        );
+        return;
+      }
+      String hata = 'Bir hata oluştu.';
       if (e is DioException) {
         final data = e.response?.data;
         if (data is Map && data['hata'] != null) {
           hata = data['hata'].toString();
         } else if (e.response?.statusCode == 403) {
           hata = 'Bu işlem için yetkiniz yok.';
+        } else {
+          hata = 'Sunucuya bağlanılamadı.';
         }
+      } else {
+        hata = e.toString();
       }
       setState(() => _hataMesaji = hata);
     }
@@ -1325,10 +1339,7 @@ class _StokDuzenleSheetState extends State<_StokDuzenleSheet> {
     final urunId = widget.urun['id'];
 
     try {
-      String urunKodu = _urunKoduCtrl.text.trim();
-      if (urunKodu.isEmpty) {
-        urunKodu = widget.urun['urun_kodu'] ?? 'STK-${DateTime.now().millisecondsSinceEpoch}';
-      }
+      final urunKodu = _urunKoduCtrl.text.trim();
       await UrunService.guncelle(urunId, {
         'urun_adi': _urunAdiCtrl.text.trim(),
         'isim_2': _isim2Ctrl.text.trim(),

@@ -5,6 +5,9 @@ import '../providers/auth_provider.dart';
 import '../providers/isletme_provider.dart';
 import '../models/isletme.dart';
 import '../services/depo_service.dart';
+import '../services/storage_service.dart';
+import '../services/offline_id_service.dart';
+import '../widgets/aktif_sayim_dialog.dart';
 import 'app_layout.dart';
 
 const _P = Color(0xFF6C53F5);
@@ -113,8 +116,13 @@ class _DepolarScreenState extends ConsumerState<DepolarScreen> {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: _DepoDuzenleSheet(
           depo: depo,
-          canEdit: _seciliIsletmeId != null && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'duzenle'),
-          canDelete: _seciliIsletmeId != null && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'sil'),
+          isletmeId: _seciliIsletmeId,
+          canEdit: _seciliIsletmeId != null
+              && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'duzenle')
+              && (!StorageService.isOffline || OfflineIdService.isTempId(depo['id'])),
+          canDelete: _seciliIsletmeId != null
+              && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'sil')
+              && (!StorageService.isOffline || OfflineIdService.isTempId(depo['id'])),
           onKaydedildi: () {
             if (_seciliIsletmeId != null) _fetchDepolar(_seciliIsletmeId!);
           },
@@ -258,12 +266,19 @@ class _DepolarScreenState extends ConsumerState<DepolarScreen> {
                             itemBuilder: (ctx, i) {
                               final d = _filtreliDepolar[i];
                               final gradColors = _GRADS[i % _GRADS.length];
-                              final canDuzenle = _seciliIsletmeId != null && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'duzenle');
-                              final canSil = _seciliIsletmeId != null && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'sil');
+                              final isOffline = StorageService.isOffline;
+                              final isTempDepo = OfflineIdService.isTempId(d['id']);
+                              final canDuzenle = _seciliIsletmeId != null
+                                  && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'duzenle')
+                                  && (!isOffline || isTempDepo);
+                              final canSil = _seciliIsletmeId != null
+                                  && ref.read(authProvider.notifier).isletmeYetkisi(_seciliIsletmeId!, 'depo', 'sil')
+                                  && (!isOffline || isTempDepo);
                               return _DepoCard(
                                 depo: d,
                                 gradColors: gradColors,
                                 onDuzenle: (canDuzenle || canSil) ? () => _showDepoDuzenle(d) : null,
+                                soluk: isOffline && !isTempDepo,
                               );
                             },
                           ),
@@ -301,18 +316,21 @@ class _DepoCard extends StatelessWidget {
   final Map<String, dynamic> depo;
   final List<Color> gradColors;
   final VoidCallback? onDuzenle;
-  const _DepoCard({required this.depo, required this.gradColors, this.onDuzenle});
+  final bool soluk;
+  const _DepoCard({required this.depo, required this.gradColors, this.onDuzenle, this.soluk = false});
 
   @override
   Widget build(BuildContext context) {
     final ad = depo['ad'] ?? '';
     final konum = depo['konum'];
 
-    return Container(
+    return Opacity(
+      opacity: soluk ? 0.45 : 1.0,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: soluk ? const Color(0xFFF9FAFB) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFF3F4F6)),
         boxShadow: [
@@ -388,6 +406,7 @@ class _DepoCard extends StatelessWidget {
             ),
         ],
       ),
+    ),
     );
   }
 }
@@ -681,11 +700,12 @@ class _DepoEkleSheetState extends State<_DepoEkleSheet> {
 // ──────────────────────────────────────────
 class _DepoDuzenleSheet extends StatefulWidget {
   final Map<String, dynamic> depo;
+  final String? isletmeId;
   final VoidCallback onKaydedildi;
   final bool canEdit;
   final bool canDelete;
 
-  const _DepoDuzenleSheet({required this.depo, required this.onKaydedildi, this.canEdit = true, this.canDelete = true});
+  const _DepoDuzenleSheet({required this.depo, this.isletmeId, required this.onKaydedildi, this.canEdit = true, this.canDelete = true});
 
   @override
   State<_DepoDuzenleSheet> createState() => _DepoDuzenleSheetState();
@@ -722,19 +742,32 @@ class _DepoDuzenleSheetState extends State<_DepoDuzenleSheet> {
     final navigator = Navigator.of(context);
     final depoId = widget.depo['id'];
     try {
-      await DepoService.sil(depoId);
+      await DepoService.sil(depoId, isletmeId: widget.isletmeId);
       navigator.pop();
       widget.onKaydedildi();
     } catch (e) {
       if (!mounted) return;
-      String hata = 'Sunucuya bağlanılamadı.';
+      if (e is AktifSayimException) {
+        AktifSayimDialog.show(
+          context,
+          baslik: 'Depo Silinemedi',
+          mesaj: e.mesaj,
+          sayimAdlari: e.sayimAdlari,
+        );
+        return;
+      }
+      String hata;
       if (e is DioException) {
         final data = e.response?.data;
         if (data is Map && data['hata'] != null) {
           hata = data['hata'].toString();
         } else if (e.response?.statusCode == 403) {
           hata = 'Bu işlem için yetkiniz yok.';
+        } else {
+          hata = 'Sunucuya bağlanılamadı.';
         }
+      } else {
+        hata = e.toString().replaceFirst('Exception: ', '');
       }
       setState(() => _hataMesaji = hata);
     }

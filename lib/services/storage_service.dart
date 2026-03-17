@@ -10,6 +10,7 @@ class StorageService {
 
   static SharedPreferences? _prefs;
   static String? _cachedToken;
+  static bool _offlineMode = false;
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -23,6 +24,9 @@ class StorageService {
 
     // Secure storage'dan token'ı cache'le
     _cachedToken = await _secureStorage.read(key: ApiConfig.tokenKey);
+
+    // Offline mod durumunu yükle
+    _offlineMode = _prefs?.getBool('offline_mode') ?? false;
   }
 
   static bool get hasToken => _cachedToken != null;
@@ -36,5 +40,15 @@ class StorageService {
   static Future<void> removeToken() async {
     await _secureStorage.delete(key: ApiConfig.tokenKey);
     _cachedToken = null;
+  }
+
+  // ── Offline Mod ──
+
+  /// Offline modda mı? (senkron okuma)
+  static bool get isOffline => _offlineMode;
+
+  static Future<void> setOfflineMode(bool value) async {
+    _offlineMode = value;
+    await _prefs?.setBool('offline_mode', value);
   }
 }
