@@ -142,9 +142,11 @@ class UrunService {
 
   static Future<Map<String, dynamic>?> _barkodBulOffline(String isletmeId, String barkod) async {
     final db = await DatabaseHelper.database;
+    // LIKE wildcard'larını escape et (SQL injection koruması)
+    final escapedBarkod = barkod.replaceAll('%', '\\%').replaceAll('_', '\\_');
     final rows = await db.query('urunler',
-      where: 'isletme_id = ? AND aktif = 1 AND barkodlar LIKE ?',
-      whereArgs: [isletmeId, '%$barkod%'],
+      where: "isletme_id = ? AND aktif = 1 AND barkodlar LIKE ? ESCAPE '\\'",
+      whereArgs: [isletmeId, '%$escapedBarkod%'],
     );
     if (rows.isEmpty) return null;
 

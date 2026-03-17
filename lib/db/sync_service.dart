@@ -99,7 +99,7 @@ class SyncService {
           }
         }
         stats.depoSayisi += depolar.length;
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Depo pull hatası: $e'); }
 
       // Urunler
       try {
@@ -143,7 +143,7 @@ class SyncService {
           }
         }
         stats.urunSayisi += liste.length;
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Urun pull hatası: $e'); }
 
       // Sayimlar
       try {
@@ -188,10 +188,10 @@ class SyncService {
             final kalemler = await SayimService.kalemListeleOnline(sayimId);
             await _kalemlerKaydet(db, kalemler, sayimId, isletmeId);
             stats.kalemSayisi += kalemler.length;
-          } catch (_) {}
+          } catch (e) { debugPrint('[Sync] Kalem pull hatası ($sayimId): $e'); }
         }
         stats.sayimSayisi += sayimlar.length;
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Sayim pull hatası: $e'); }
 
       // Toplanmış sayımlar (toplama=1 ile ayrıca çekilir)
       try {
@@ -222,10 +222,10 @@ class SyncService {
             final kalemler = await SayimService.kalemListeleOnline(sayimId);
             await _kalemlerKaydet(db, kalemler, sayimId, isletmeId);
             stats.kalemSayisi += kalemler.length;
-          } catch (_) {}
+          } catch (e) { debugPrint('[Sync] Kalem pull hatası ($sayimId): $e'); }
         }
         stats.sayimSayisi += toplanmislar.length;
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Toplanmis pull hatası: $e'); }
     }
 
     return stats;
@@ -503,7 +503,7 @@ class SyncService {
         if (veri['_temp_id']?.toString() == idStr) {
           await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Queue temizle parse hatası: $e'); }
     }
   }
 
@@ -519,7 +519,7 @@ class SyncService {
         if (veri['sayim_id']?.toString() == idStr) {
           await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Kalem queue parse hatası: $e'); }
     }
     // Sayımla ilgili tamamla/guncelle/sil queue kayıtlarını da temizle
     final sayimRows = await db.query('sync_queue', where: "tablo = 'sayimlar'");
@@ -529,7 +529,7 @@ class SyncService {
         if (veri['id']?.toString() == idStr) {
           await db.delete('sync_queue', where: 'id = ?', whereArgs: [row['id']]);
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('[Sync] Sayim queue parse hatası: $e'); }
     }
   }
 
