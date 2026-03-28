@@ -31,7 +31,7 @@ class AppLayout extends ConsumerWidget {
     final auth = ref.watch(authProvider);
     final kullanici = auth.kullanici;
     final ad = kullanici?.adSoyad ?? 'Kullanici';
-    final rol = kullanici?.rol == 'admin' ? 'Yonetici' : 'Depo Kullanicisi';
+    final rol = kullanici?.rol == 'admin' ? 'Yönetici' : 'İşletme Admini';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FE),

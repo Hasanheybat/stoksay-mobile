@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/isletme.dart';
 import '../services/isletme_service.dart';
+import '../services/storage_service.dart';
 import '../db/database_helper.dart';
 import '../db/sync_service.dart';
 
@@ -29,7 +30,7 @@ class IsletmeNotifier extends Notifier<IsletmeState> {
     state = state.copyWith(yukleniyor: true);
     try {
       final isletmeler = await IsletmeService.isletmelerim();
-      // SQLite cache (web'de calismaz, hata yakalanir)
+      // SQLite cache — sadece offline moddayken tam senkronizasyon yap
       try {
         final db = await DatabaseHelper.database;
         await db.delete('isletmeler');
@@ -42,7 +43,10 @@ class IsletmeNotifier extends Notifier<IsletmeState> {
             'son_guncelleme': DateTime.now().toIso8601String(),
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
-        await SyncService.tamSenkronizasyon(isletmeler);
+        // Online moddayken tam senkronizasyon yapma — gereksiz bekleme
+        if (StorageService.isOffline) {
+          await SyncService.tamSenkronizasyon(isletmeler);
+        }
       } catch (_) {}
       state = IsletmeState(
         isletmeler: isletmeler,

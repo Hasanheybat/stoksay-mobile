@@ -41,12 +41,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
   Future<void> _syncData() async {
     if (_syncing) return;
-    final connectivity = ref.read(connectivityProvider);
-
-    if (connectivity.offlineMode) {
-      // Offline moddayken verileri güncelle devre dışı
-      return;
-    }
 
     setState(() {
       _syncing = true;
@@ -56,7 +50,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     });
 
     try {
+      // Auth ve isletme her zaman yüklenmeli (offline modda cache'den gelir)
       await ref.read(authProvider.notifier).oturumKontrol();
+      ref.read(authProvider.notifier).initLifecycleObserver();
 
       // Pasif kullanıcı kontrolü — 403 alındıysa build() pasif ekranı gösterecek
       final authCheck = ref.read(authProvider);
@@ -66,7 +62,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       }
 
       await ref.read(isletmeProvider.notifier).yukle();
-      final isletme = ref.read(isletmeProvider);
 
       // Yetki kontrolü
       final authN = ref.read(authProvider.notifier);
@@ -77,6 +72,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
           authN.hasYetki('sayim', 'goruntule') ||
           authN.hasYetki('depo', 'goruntule') ||
           authN.hasYetki('toplam_sayim', 'goruntule');
+
+      final connectivity = ref.read(connectivityProvider);
+
+      if (connectivity.offlineMode) {
+        // Offline mod — auth ve isletme cache'den yüklendi, sync atla
+        if (hasPerms) {
+          final yetkiListesi = <String>[];
+          if (authN.hasYetki('urun', 'goruntule')) yetkiListesi.add('Stoklar');
+          if (authN.hasYetki('sayim', 'goruntule')) yetkiListesi.add('Sayımlar');
+          if (authN.hasYetki('depo', 'goruntule')) yetkiListesi.add('Depolar');
+          if (authN.hasYetki('toplam_sayim', 'goruntule')) yetkiListesi.add('Toplam Sayımlar');
+          setState(() {
+            _syncing = false;
+            _syncDone = true;
+            _syncStats = isAdm
+                ? 'Çevrimdışı · Yönetici'
+                : 'Çevrimdışı · ${yetkiListesi.join(", ")}';
+          });
+        } else {
+          setState(() {
+            _syncing = false;
+            _syncDone = false;
+            _yetkiYok = true;
+            _syncStats = 'Yetki atanmadı';
+          });
+        }
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _syncDone = false);
+        });
+        return;
+      }
 
       if (hasPerms) {
         // Yetki atanmış — atanan yetkileri listele

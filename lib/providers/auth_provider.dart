@@ -79,6 +79,20 @@ class AuthNotifier extends Notifier<AuthState> {
       return;
     }
 
+    // Offline moddayken API çağrısı atla, cache'den yükle (timeout beklemeyi önler)
+    if (StorageService.isOffline) {
+      final cached = await _cacheOku();
+      if (cached != null) {
+        state = AuthState(
+          kullanici: cached['kullanici'],
+          yetkilerMap: cached['yetkilerMap'],
+          yukleniyor: false,
+        );
+        return;
+      }
+      // Cache yoksa normal akışa devam et (API dener)
+    }
+
     try {
       final data = await AuthService.oturumKontrol();
       final kullanici = Kullanici.fromJson(data['kullanici']);

@@ -61,43 +61,43 @@ class SyncService {
       try {
         final depolar = await DepoService.listeleOnline(isletmeId);
 
-        if (isOffline) {
-          // Temp ID'li satırları sakla
-          final localDepolar = await db.query('depolar',
-            where: "isletme_id = ? AND id LIKE 'temp_%'",
-            whereArgs: [isletmeId]);
-          await db.delete('depolar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
-          for (final d in depolar) {
-            final did = d['id']?.toString() ?? '';
-            if (did.isEmpty) continue;
-            await db.insert('depolar', {
-              'id': did,
-              'ad': d['ad'],
-              'konum': d['konum'],
-              'isletme_id': isletmeId,
-              'aktif': _parseAktif(d['aktif']),
-              'son_guncelleme': DateTime.now().toIso8601String(),
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await db.transaction((txn) async {
+          if (isOffline) {
+            final localDepolar = await txn.query('depolar',
+              where: "isletme_id = ? AND id LIKE 'temp_%'",
+              whereArgs: [isletmeId]);
+            await txn.delete('depolar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
+            for (final d in depolar) {
+              final did = d['id']?.toString() ?? '';
+              if (did.isEmpty) continue;
+              await txn.insert('depolar', {
+                'id': did,
+                'ad': d['ad'],
+                'konum': d['konum'],
+                'isletme_id': isletmeId,
+                'aktif': _parseAktif(d['aktif']),
+                'son_guncelleme': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
+            for (final d in localDepolar) {
+              await txn.insert('depolar', d, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
+          } else {
+            await txn.delete('depolar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
+            for (final d in depolar) {
+              final did = d['id']?.toString() ?? '';
+              if (did.isEmpty) continue;
+              await txn.insert('depolar', {
+                'id': did,
+                'ad': d['ad'],
+                'konum': d['konum'],
+                'isletme_id': isletmeId,
+                'aktif': _parseAktif(d['aktif']),
+                'son_guncelleme': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
           }
-          // Temp ID'li satırları geri ekle
-          for (final d in localDepolar) {
-            await db.insert('depolar', d, conflictAlgorithm: ConflictAlgorithm.replace);
-          }
-        } else {
-          await db.delete('depolar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
-          for (final d in depolar) {
-            final did = d['id']?.toString() ?? '';
-            if (did.isEmpty) continue;
-            await db.insert('depolar', {
-              'id': did,
-              'ad': d['ad'],
-              'konum': d['konum'],
-              'isletme_id': isletmeId,
-              'aktif': _parseAktif(d['aktif']),
-              'son_guncelleme': DateTime.now().toIso8601String(),
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
-          }
-        }
+        });
         stats.depoSayisi += depolar.length;
       } catch (e) { debugPrint('[Sync] Depo pull hatası: $e'); }
 
@@ -105,43 +105,45 @@ class SyncService {
       try {
         final liste = await UrunService.listeleOnline(isletmeId, sayfa: 1, limit: 10000);
 
-        if (isOffline) {
-          final localUrunler = await db.query('urunler',
-            where: "isletme_id = ? AND id LIKE 'temp_%'",
-            whereArgs: [isletmeId]);
-          await db.delete('urunler', where: 'isletme_id = ?', whereArgs: [isletmeId]);
-          for (final u in liste) {
-            await db.insert('urunler', {
-              'id': u['id']?.toString() ?? '',
-              'urun_kodu': u['urun_kodu'],
-              'urun_adi': u['urun_adi'],
-              'isim_2': u['isim_2'],
-              'birim': u['birim'],
-              'barkodlar': jsonEncode(u['barkodlar'] ?? []),
-              'isletme_id': isletmeId,
-              'aktif': _parseAktif(u['aktif']),
-              'son_guncelleme': DateTime.now().toIso8601String(),
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await db.transaction((txn) async {
+          if (isOffline) {
+            final localUrunler = await txn.query('urunler',
+              where: "isletme_id = ? AND id LIKE 'temp_%'",
+              whereArgs: [isletmeId]);
+            await txn.delete('urunler', where: 'isletme_id = ?', whereArgs: [isletmeId]);
+            for (final u in liste) {
+              await txn.insert('urunler', {
+                'id': u['id']?.toString() ?? '',
+                'urun_kodu': u['urun_kodu'],
+                'urun_adi': u['urun_adi'],
+                'isim_2': u['isim_2'],
+                'birim': u['birim'],
+                'barkodlar': jsonEncode(u['barkodlar'] ?? []),
+                'isletme_id': isletmeId,
+                'aktif': _parseAktif(u['aktif']),
+                'son_guncelleme': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
+            for (final u in localUrunler) {
+              await txn.insert('urunler', u, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
+          } else {
+            await txn.delete('urunler', where: 'isletme_id = ?', whereArgs: [isletmeId]);
+            for (final u in liste) {
+              await txn.insert('urunler', {
+                'id': u['id']?.toString() ?? '',
+                'urun_kodu': u['urun_kodu'],
+                'urun_adi': u['urun_adi'],
+                'isim_2': u['isim_2'],
+                'birim': u['birim'],
+                'barkodlar': jsonEncode(u['barkodlar'] ?? []),
+                'isletme_id': isletmeId,
+                'aktif': _parseAktif(u['aktif']),
+                'son_guncelleme': DateTime.now().toIso8601String(),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
           }
-          for (final u in localUrunler) {
-            await db.insert('urunler', u, conflictAlgorithm: ConflictAlgorithm.replace);
-          }
-        } else {
-          await db.delete('urunler', where: 'isletme_id = ?', whereArgs: [isletmeId]);
-          for (final u in liste) {
-            await db.insert('urunler', {
-              'id': u['id']?.toString() ?? '',
-              'urun_kodu': u['urun_kodu'],
-              'urun_adi': u['urun_adi'],
-              'isim_2': u['isim_2'],
-              'birim': u['birim'],
-              'barkodlar': jsonEncode(u['barkodlar'] ?? []),
-              'isletme_id': isletmeId,
-              'aktif': _parseAktif(u['aktif']),
-              'son_guncelleme': DateTime.now().toIso8601String(),
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
-          }
-        }
+        });
         stats.urunSayisi += liste.length;
       } catch (e) { debugPrint('[Sync] Urun pull hatası: $e'); }
 
@@ -149,41 +151,45 @@ class SyncService {
       try {
         final sayimlar = await SayimService.listeleOnline(isletmeId);
 
-        if (isOffline) {
-          // Sunucu verilerini sil (temp olanlar hariç)
-          await db.delete('sayimlar',
-            where: "isletme_id = ? AND id NOT LIKE 'temp_%'",
-            whereArgs: [isletmeId]);
-          await db.delete('sayim_kalemleri',
-            where: "sayim_id NOT LIKE 'temp_%'");
-        } else {
-          // Online: tüm eski veriyi temizle (sayim_kalemleri dahil)
-          final eskiSayimlar = await db.query('sayimlar',
-            columns: ['id'], where: 'isletme_id = ?', whereArgs: [isletmeId]);
-          for (final s in eskiSayimlar) {
-            await db.delete('sayim_kalemleri', where: 'sayim_id = ?', whereArgs: [s['id']]);
+        // Eski verileri temizle + sayımları yaz (transaction)
+        await db.transaction((txn) async {
+          if (isOffline) {
+            await txn.delete('sayimlar',
+              where: "isletme_id = ? AND id NOT LIKE 'temp_%'",
+              whereArgs: [isletmeId]);
+            await txn.delete('sayim_kalemleri',
+              where: "sayim_id NOT LIKE 'temp_%'");
+          } else {
+            final eskiSayimlar = await txn.query('sayimlar',
+              columns: ['id'], where: 'isletme_id = ?', whereArgs: [isletmeId]);
+            for (final s in eskiSayimlar) {
+              await txn.delete('sayim_kalemleri', where: 'sayim_id = ?', whereArgs: [s['id']]);
+            }
+            await txn.delete('sayimlar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
           }
-          await db.delete('sayimlar', where: 'isletme_id = ?', whereArgs: [isletmeId]);
-        }
 
+          for (final s in sayimlar) {
+            final sayimId = s['id']?.toString() ?? '';
+            final depoAdi = s['depolar'] is Map ? s['depolar']['ad']?.toString() : null;
+            await txn.insert('sayimlar', {
+              'id': sayimId,
+              'ad': s['ad'],
+              'tarih': s['tarih'],
+              'durum': s['durum'],
+              'isletme_id': isletmeId,
+              'depo_id': s['depo_id']?.toString(),
+              'depo_adi': depoAdi,
+              'kullanici_id': s['kullanici_id']?.toString(),
+              'kisiler': jsonEncode(s['kisiler'] ?? []),
+              'notlar': s['notlar'],
+              'son_guncelleme': DateTime.now().toIso8601String(),
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        });
+
+        // Kalemler (API çağrısı içerdiği için transaction dışında)
         for (final s in sayimlar) {
           final sayimId = s['id']?.toString() ?? '';
-          final depoAdi = s['depolar'] is Map ? s['depolar']['ad']?.toString() : null;
-          await db.insert('sayimlar', {
-            'id': sayimId,
-            'ad': s['ad'],
-            'tarih': s['tarih'],
-            'durum': s['durum'],
-            'isletme_id': isletmeId,
-            'depo_id': s['depo_id']?.toString(),
-            'depo_adi': depoAdi,
-            'kullanici_id': s['kullanici_id']?.toString(),
-            'kisiler': jsonEncode(s['kisiler'] ?? []),
-            'notlar': s['notlar'],
-            'son_guncelleme': DateTime.now().toIso8601String(),
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-          // Kalemler
           try {
             final kalemler = await SayimService.kalemListeleOnline(sayimId);
             await _kalemlerKaydet(db, kalemler, sayimId, isletmeId);
@@ -233,37 +239,39 @@ class SyncService {
 
   /// Kalem listesini SQLite'a kaydet + pasif ürünleri de ekle
   static Future<void> _kalemlerKaydet(Database db, List<Map<String, dynamic>> kalemler, String sayimId, String isletmeId) async {
-    for (final k in kalemler) {
-      await db.insert('sayim_kalemleri', {
-        'id': k['id']?.toString() ?? '',
-        'sayim_id': sayimId,
-        'urun_id': k['urun_id']?.toString(),
-        'miktar': k['miktar'],
-        'birim': k['birim'],
-        'notlar': k['notlar'],
-        'son_guncelleme': DateTime.now().toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.transaction((txn) async {
+      for (final k in kalemler) {
+        await txn.insert('sayim_kalemleri', {
+          'id': k['id']?.toString() ?? '',
+          'sayim_id': sayimId,
+          'urun_id': k['urun_id']?.toString(),
+          'miktar': k['miktar'],
+          'birim': k['birim'],
+          'notlar': k['notlar'],
+          'son_guncelleme': DateTime.now().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
 
-      // Pasif ürünleri de SQLite'a kaydet (sayımda referans olarak kalması için)
-      final urun = k['isletme_urunler'];
-      if (urun is Map && urun['id'] != null) {
-        final urunId = urun['id'].toString();
-        final mevcut = await db.query('urunler', where: 'id = ?', whereArgs: [urunId]);
-        if (mevcut.isEmpty) {
-          await db.insert('urunler', {
-            'id': urunId,
-            'urun_kodu': urun['urun_kodu'],
-            'urun_adi': urun['urun_adi'],
-            'isim_2': urun['isim_2'],
-            'birim': urun['birim'],
-            'barkodlar': jsonEncode(urun['barkodlar'] ?? []),
-            'isletme_id': isletmeId,
-            'aktif': _parseAktif(urun['aktif']),
-            'son_guncelleme': DateTime.now().toIso8601String(),
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        // Pasif ürünleri de SQLite'a kaydet (sayımda referans olarak kalması için)
+        final urun = k['isletme_urunler'];
+        if (urun is Map && urun['id'] != null) {
+          final urunId = urun['id'].toString();
+          final mevcut = await txn.query('urunler', where: 'id = ?', whereArgs: [urunId]);
+          if (mevcut.isEmpty) {
+            await txn.insert('urunler', {
+              'id': urunId,
+              'urun_kodu': urun['urun_kodu'],
+              'urun_adi': urun['urun_adi'],
+              'isim_2': urun['isim_2'],
+              'birim': urun['birim'],
+              'barkodlar': jsonEncode(urun['barkodlar'] ?? []),
+              'isletme_id': isletmeId,
+              'aktif': _parseAktif(urun['aktif']),
+              'son_guncelleme': DateTime.now().toIso8601String(),
+            }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          }
         }
       }
-    }
+    });
   }
 
   /// aktif alanını güvenli şekilde 0/1'e çevir (bool, int, string hepsi olabilir)
