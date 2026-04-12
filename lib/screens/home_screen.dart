@@ -337,6 +337,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     // Offline modda "Verileri Güncelle" daima pasif
     final syncEnabled = !isOffline;
 
+    // ── YÜKLEME EKRANI (auth henüz yüklenmedi) ──
+    if (auth.yukleniyor || auth.kullanici == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF4F7FE),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 40, height: 40,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Color(0xFF6366F1),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Yükleniyor...', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+            ],
+          ),
+        ),
+      );
+    }
+
     // ── PASİF KULLANICI EKRANI ──
     if (auth.pasif) {
       return Scaffold(

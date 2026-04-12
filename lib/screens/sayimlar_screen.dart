@@ -164,22 +164,22 @@ class _SayimlarScreenState extends ConsumerState<SayimlarScreen> {
                       ),
                       // Topla butonu
                       GestureDetector(
-                        onTap: _seciliSayimlar.length >= 2 ? _showToplamaModal : null,
+                        onTap: _seciliSayimlar.isNotEmpty ? _showToplamaModal : null,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            gradient: _seciliSayimlar.length >= 2
+                            gradient: _seciliSayimlar.isNotEmpty
                                 ? const LinearGradient(colors: [_P, Color(0xFF8B5CF6)])
                                 : null,
-                            color: _seciliSayimlar.length >= 2 ? null : const Color(0xFFE5E7EB),
+                            color: _seciliSayimlar.isNotEmpty ? null : const Color(0xFFE5E7EB),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.calculate, size: 14, color: _seciliSayimlar.length >= 2 ? Colors.white : const Color(0xFF9CA3AF)),
+                              Icon(Icons.calculate, size: 14, color: _seciliSayimlar.isNotEmpty ? Colors.white : const Color(0xFF9CA3AF)),
                               const SizedBox(width: 4),
-                              Text('Topla', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _seciliSayimlar.length >= 2 ? Colors.white : const Color(0xFF9CA3AF))),
+                              Text('Topla', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _seciliSayimlar.isNotEmpty ? Colors.white : const Color(0xFF9CA3AF))),
                             ],
                           ),
                         ),
