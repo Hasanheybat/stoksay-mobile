@@ -1,8 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connectivity_provider.dart';
+
+String? _cachedVersion;
+
+class _VersionBadge extends StatefulWidget {
+  const _VersionBadge();
+  @override
+  State<_VersionBadge> createState() => _VersionBadgeState();
+}
+
+class _VersionBadgeState extends State<_VersionBadge> {
+  @override
+  void initState() {
+    super.initState();
+    if (_cachedVersion == null) {
+      PackageInfo.fromPlatform().then((info) {
+        if (!mounted) return;
+        setState(() => _cachedVersion = info.version);
+      }).catchError((_) {
+        if (!mounted) return;
+        setState(() => _cachedVersion = '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = _cachedVersion ?? '';
+    if (v.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+        ),
+        child: Text(
+          'v$v',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class AppLayout extends ConsumerWidget {
   final Widget child;
@@ -172,6 +223,8 @@ class AppLayout extends ConsumerWidget {
                           ),
                         ),
                       ),
+                    // Version badge (only on home, left of settings)
+                    if (showSettings) const _VersionBadge(),
                     // Settings button (only on home)
                     if (showSettings)
                       GestureDetector(

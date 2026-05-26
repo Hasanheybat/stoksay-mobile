@@ -514,7 +514,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     // Kullanıcının herhangi bir yetkisi var mı?
     final authNotifier = ref.read(authProvider.notifier);
     final isAdmin = auth.kullanici?.rol == 'admin';
+    final hasDenetleyici = (auth.kullanici?.denetleyiciYetkisi ?? false);
     final hasAnyPermission = isAdmin ||
+        hasDenetleyici ||
         authNotifier.hasYetki('urun', 'goruntule') ||
         authNotifier.hasYetki('sayim', 'goruntule') ||
         authNotifier.hasYetki('depo', 'goruntule') ||
@@ -683,34 +685,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                   mainAxisSpacing: 12,
                   childAspectRatio: 1.6,
                   children: [
-                    _NavCard(
-                      icon: Icons.business,
-                      label: 'İşletmeler',
-                      onTap: _showIsletmeler,
-                    ),
-                    if (authNotifier.hasYetki('urun', 'goruntule'))
+                    if (!(auth.kullanici?.sadeceDenetleyici ?? false))
+                      _NavCard(
+                        icon: Icons.business,
+                        label: 'İşletmeler',
+                        onTap: _showIsletmeler,
+                      ),
+                    if (!(auth.kullanici?.sadeceDenetleyici ?? false) && authNotifier.hasYetki('urun', 'goruntule'))
                       _NavCard(
                         icon: Icons.inventory_2,
                         label: 'Stoklar',
                         onTap: () => context.push('/stoklar'),
                       ),
-                    if (authNotifier.hasYetki('sayim', 'goruntule'))
+                    if (!(auth.kullanici?.sadeceDenetleyici ?? false) && authNotifier.hasYetki('sayim', 'goruntule'))
                       _NavCard(
                         icon: Icons.assignment,
                         label: 'Sayımlar',
                         onTap: () => context.push('/sayimlar'),
                       ),
-                    if (authNotifier.hasYetki('depo', 'goruntule'))
+                    if (!(auth.kullanici?.sadeceDenetleyici ?? false) && authNotifier.hasYetki('depo', 'goruntule'))
                       _NavCard(
                         icon: Icons.warehouse,
                         label: 'Depolar',
                         onTap: () => context.push('/depolar'),
                       ),
-                    if (authNotifier.hasYetki('toplam_sayim', 'goruntule'))
+                    if (!(auth.kullanici?.sadeceDenetleyici ?? false) && authNotifier.hasYetki('toplam_sayim', 'goruntule'))
                       _NavCard(
                         icon: Icons.calculate,
                         label: 'Toplam Sayımlar',
                         onTap: () => context.push('/toplanmis-sayimlar'),
+                      ),
+                    // Denetleme — denetleyici_yetkisi VAR mi (admin de gorur)
+                    if (isAdmin || (auth.kullanici?.denetleyiciYetkisi ?? false))
+                      _NavCard(
+                        icon: Icons.visibility,
+                        label: 'Denetleme',
+                        onTap: () => context.push('/denetleme'),
                       ),
                   ],
                 ),

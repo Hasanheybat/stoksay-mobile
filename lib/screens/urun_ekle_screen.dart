@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
 import '../services/sayim_service.dart';
 import '../services/urun_service.dart';
+import '../services/socket_service.dart';
 import '../widgets/bildirim.dart';
 import 'app_layout.dart';
 
@@ -61,6 +62,8 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
 
   final _isimFocusNode = FocusNode();
   final _audioPlayer = AudioPlayer();
+  final _scrollController = ScrollController();
+  final _isim1Key = GlobalKey();
 
   @override
   void initState() {
@@ -99,6 +102,7 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
     _kodController.dispose();
     _isimFocusNode.dispose();
     _audioPlayer.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -155,6 +159,7 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
     FocusScope.of(context).unfocus();
     final kullanici = ref.read(authProvider).kullanici;
     final birimOtomatik = kullanici?.ayarlar['birim_otomatik'] ?? true;
+    final miktarOtomatik = kullanici?.ayarlar['miktar_otomatik'] == true;
     final urunBirim = u['birim']?.toString() ?? '';
     setState(() {
       _urunId = u['id']?.toString();
@@ -179,7 +184,14 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
         if (mounted) setState(() => _birimAcik = true);
       });
     }
+    // Miktar otomatik aç — birim hazırsa hesap makinesini doğrudan aç
+    if (miktarOtomatik && birimOtomatik && urunBirim.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _showHesapMakinesi();
+      });
+    }
   }
+
 
   void _openBarcodeScanner() {
     showModalBottomSheet(
@@ -308,6 +320,13 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
         'miktar': double.parse(miktar),
         'birim': _birim,
       });
+      // Canli denetleme icin socket broadcast
+      try {
+        SocketService.emit('sayim:kalem_eklendi', {
+          'sayim_id': widget.sayimId,
+          'kalem': sonuc,
+        });
+      } catch (_) {}
       _showSnack('Ürün sayıma eklendi!');
       _temizle();
       final urun = sonuc['isletme_urunler'];
@@ -369,11 +388,12 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
                 FocusScope.of(context).unfocus();
               },
               child: SingleChildScrollView(
+              controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(16, 42, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Ürün İsmi 1 + Kamera
+                  // Ürün İsmi 1 + Temizle + Kamera
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -388,31 +408,50 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
                             ),
                         ],
                       ),
-                      GestureDetector(
-                        onTap: _openBarcodeScanner,
-                        child: Container(
-                          width: 36, height: 36,
-                          decoration: BoxDecoration(
-                            color: _PL,
-                            borderRadius: BorderRadius.circular(10),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _temizle,
+                            child: Container(
+                              width: 36, height: 36,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3F4F6),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.refresh, size: 20, color: Color(0xFF6B7280)),
+                            ),
                           ),
-                          child: const Icon(Icons.camera_alt, size: 20, color: _P),
-                        ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _openBarcodeScanner,
+                            child: Container(
+                              width: 36, height: 36,
+                              decoration: BoxDecoration(
+                                color: _PL,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.camera_alt, size: 20, color: _P),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  _buildSearchField(
-                    controller: _isimController,
-                    focusNode: _isimFocusNode,
-                    hint: 'Ürün adı girin veya arayın...',
-                    borderColor: _urunId != null ? const Color(0xFF10B981) : const Color(0xFFE5E7EB),
-                    oneriler: _oneriler1,
-                    bos: _bos1,
-                    acik: _acik1,
-                    onChanged: (val) {
-                      setState(() => _urunId = null);
-                    },
+                  KeyedSubtree(
+                    key: _isim1Key,
+                    child: _buildSearchField(
+                      controller: _isimController,
+                      focusNode: _isimFocusNode,
+                      hint: 'Ürün adı girin veya arayın...',
+                      borderColor: _urunId != null ? const Color(0xFF10B981) : const Color(0xFFE5E7EB),
+                      oneriler: _oneriler1,
+                      bos: _bos1,
+                      acik: _acik1,
+                      onChanged: (val) {
+                        setState(() => _urunId = null);
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
 
@@ -543,29 +582,6 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
             ),
           ),
           ),
-
-          // Alt buton - Temizle
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Color(0xFFF3F4F6))),
-            ),
-            child: GestureDetector(
-              onTap: _temizle,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text('Temizle',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF6B7280))),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -663,7 +679,14 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
         if (acik)
           Container(
             margin: const EdgeInsets.only(top: 4),
-            constraints: const BoxConstraints(maxHeight: 320),
+            constraints: BoxConstraints(
+              maxHeight: () {
+                final screenH = MediaQuery.of(context).size.height;
+                final kb = MediaQuery.of(context).viewInsets.bottom;
+                final available = screenH - kb - 280;
+                return available.clamp(140.0, 320.0);
+              }(),
+            ),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -861,6 +884,7 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
       isScrollControlled: true,
       builder: (ctx) => _HesapMakinesi(
         mevcut: _miktar,
+        birim: _birim,
         onKapat: () => Navigator.pop(ctx),
         onEkle: (val) {
           Navigator.pop(ctx);
@@ -878,12 +902,14 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
 // ── Hesap Makinesi ──
 class _HesapMakinesi extends StatefulWidget {
   final String mevcut;
+  final String birim;
   final VoidCallback onKapat;
   final Function(String) onEkle;
   final Function(String) onMiktarSec;
 
   const _HesapMakinesi({
     required this.mevcut,
+    required this.birim,
     required this.onKapat,
     required this.onEkle,
     required this.onMiktarSec,
@@ -1112,22 +1138,43 @@ class _HesapMakinesiState extends State<_HesapMakinesi> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Alt: sonuç / toplam (büyük)
-                SizedBox(
-                  width: double.infinity,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true,
-                    child: Text(
-                      resultText,
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF1F2937),
+                // Alt: sonuç / toplam (büyük) — sol birim badge'i + sağ sonuç
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (widget.birim.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD1FAE5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF10B981), width: 1.2),
+                        ),
+                        child: Text(
+                          widget.birim,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF059669),
+                          ),
+                        ),
                       ),
-                      textAlign: TextAlign.right,
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        reverse: true,
+                        child: Text(
+                          resultText,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF1F2937),
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),

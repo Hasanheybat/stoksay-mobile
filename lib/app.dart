@@ -11,6 +11,8 @@ import 'screens/yeni_sayim_screen.dart';
 import 'screens/sayim_detay_screen.dart';
 import 'screens/urun_ekle_screen.dart';
 import 'screens/toplanmis_sayimlar_screen.dart';
+import 'screens/denetleme_screen.dart';
+import 'screens/denetleme_detay_screen.dart';
 import 'services/storage_service.dart';
 
 final _router = GoRouter(
@@ -36,6 +38,14 @@ final _router = GoRouter(
     GoRoute(path: '/sayim/:sayimId', builder: (context, state) => SayimDetayScreen(sayimId: state.pathParameters['sayimId']!)),
     GoRoute(path: '/sayim/:sayimId/urun-ekle', builder: (context, state) => UrunEkleScreen(sayimId: state.pathParameters['sayimId']!)),
     GoRoute(path: '/toplanmis-sayimlar', builder: (context, state) => const ToplanmisSayimlarScreen()),
+    GoRoute(path: '/denetleme', builder: (context, state) => const DenetlemeScreen()),
+    GoRoute(
+      path: '/denetleme/:sayimId',
+      builder: (context, state) => DenetlemeDetayScreen(
+        sayimId: state.pathParameters['sayimId']!,
+        meta: state.extra is Map<String, dynamic> ? state.extra as Map<String, dynamic> : null,
+      ),
+    ),
   ],
 );
 

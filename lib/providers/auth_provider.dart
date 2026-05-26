@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/kullanici.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
+import '../services/socket_service.dart';
 import '../db/database_helper.dart';
 
 class AuthState {
@@ -99,6 +100,7 @@ class AuthNotifier extends Notifier<AuthState> {
       final yetkilerMap = Map<String, dynamic>.from(data['yetkilerMap'] ?? {});
       try { await _cacheYaz(kullanici, yetkilerMap); } catch (_) {}
       state = AuthState(kullanici: kullanici, yetkilerMap: yetkilerMap, yukleniyor: false);
+      try { await SocketService.connect(); } catch (_) {}
     } catch (e) {
       // 403 = kullanıcı pasife alınmış → cache'e düşürme, pasif ekranı göster
       if (e is DioException && e.response?.statusCode == 403) {
@@ -127,6 +129,8 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       await AuthService.login(email, password);
       await oturumKontrol();
+      // Socket baglantisini ac (denetleme + canli sync)
+      try { await SocketService.connect(); } catch (_) {}
       return true;
     } catch (e) {
       String hata = 'Giris basarisiz';
@@ -142,6 +146,7 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> cikisYap() async {
+    try { await SocketService.disconnect(); } catch (_) {}
     await AuthService.logout();
     await DatabaseHelper.clearAll();
     state = AuthState(yukleniyor: false);
@@ -157,6 +162,9 @@ class AuthNotifier extends Notifier<AuthState> {
       rol: k.rol,
       aktif: k.aktif,
       ayarlar: yeniAyarlar,
+      denetleyiciYetkisi: k.denetleyiciYetkisi,
+      sadeceDenetleyici: k.sadeceDenetleyici,
+      izlemeLimitSaniye: k.izlemeLimitSaniye,
     );
     state = state.copyWith(kullanici: yeniKullanici);
     // Cache'i de güncelle

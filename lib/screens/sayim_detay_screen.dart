@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -9,7 +10,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:excel/excel.dart' as xl;
+import 'package:permission_handler/permission_handler.dart';
+import '../providers/auth_provider.dart';
 import '../services/sayim_service.dart';
+import '../services/socket_service.dart';
+import '../services/webrtc_service.dart';
 import '../widgets/bildirim.dart';
 import 'app_layout.dart';
 
@@ -32,10 +37,103 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
   String _aramaMetni = '';
   Set<int> _acikKalemler = {};
 
+  // Denetleme state
+  StreamSubscription<Map<String, dynamic>>? _socketSub;
+  bool _denetleniyor = false;
+  String? _denetleyiciEmail;
+  int _kalanSn = 0;
+  Timer? _kalanTimer;
+  WebRtcService? _rtc;
+  bool _denetlemeyeIzin = true;
+  bool _kameraHazir = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchSayim());
+    _initSocket();
+  }
+
+  void _initSocket() async {
+    SocketService.connect();
+    SocketService.emit('sayim:join', {'sayim_id': widget.sayimId});
+    _socketSub = SocketService.events.listen(_handleSocketEvent);
+    // Toggle acik ise kamerayi proaktif hazirla (permission request gelir)
+    if (_denetlemeyeIzin) {
+      _kamerayiOnceden();
+    }
+  }
+
+  Future<void> _kamerayiOnceden() async {
+    if (_kameraHazir) return;
+    final ok = await Permission.camera.request();
+    if (!ok.isGranted) return;
+    if (_rtc != null) return;
+    _rtc = WebRtcService();
+    await _rtc!.hazirla(kameraAc: true);
+    if (mounted) setState(() => _kameraHazir = true);
+  }
+
+  void _toggleIzin(bool yeni) async {
+    setState(() => _denetlemeyeIzin = yeni);
+    if (yeni) {
+      await _kamerayiOnceden();
+    } else {
+      await _rtc?.dispose();
+      _rtc = null;
+      if (mounted) setState(() => _kameraHazir = false);
+    }
+  }
+
+  Future<void> _handleSocketEvent(Map<String, dynamic> ev) async {
+    final type = ev['type'];
+    final data = ev['data'];
+    if (type == 'denetleme:basladi' && data is Map && data['sayim_id'] == widget.sayimId) {
+      final limit = (data['limit_sn'] as num?)?.toInt() ?? 120;
+      setState(() {
+        _denetleniyor = true;
+        _denetleyiciEmail = data['denetleyici_email']?.toString();
+        _kalanSn = limit;
+      });
+      _kalanTimer?.cancel();
+      _kalanTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) { t.cancel(); return; }
+        setState(() => _kalanSn--);
+        if (_kalanSn <= 0) t.cancel();
+      });
+      // Toggle acik ise kamera otomatik hazir
+      if (_denetlemeyeIzin && !_kameraHazir) {
+        await _kamerayiOnceden();
+      }
+    } else if (type == 'denetleme:bitti' && data is Map) {
+      _kalanTimer?.cancel();
+      await _rtc?.dispose();
+      setState(() {
+        _denetleniyor = false;
+        _denetleyiciEmail = null;
+        _kalanSn = 0;
+        _rtc = null;
+      });
+    } else if (type == 'webrtc:offer' && data is Map) {
+      // Denetleyici offer gonderdi — toggle acik ise direkt accept
+      if (!_denetlemeyeIzin) return;
+      if (_rtc == null) await _kamerayiOnceden();
+      await _rtc?.acceptOffer(
+        fromUserId: data['from'].toString(),
+        sdp: Map<String, dynamic>.from(data['sdp']),
+      );
+    } else if (type == 'webrtc:ice' && data is Map) {
+      await _rtc?.handleIce(Map<String, dynamic>.from(data['candidate']));
+    }
+  }
+
+  @override
+  void dispose() {
+    _kalanTimer?.cancel();
+    _socketSub?.cancel();
+    SocketService.emit('sayim:leave', {'sayim_id': widget.sayimId});
+    _rtc?.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchSayim() async {
@@ -170,6 +268,74 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
       showBack: true,
       child: Column(
         children: [
+          // Denetleme banner — sayim izleniyor
+          if (_denetleniyor)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              color: const Color(0xFFEF4444),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8, height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '🔴 ${_denetleyiciEmail ?? "Denetleyici"} izliyor',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '${_kalanSn}sn',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+            ),
+          // Denetlemeye Izin Toggle — sayim ekraninda her zaman gorunur
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            color: _denetlemeyeIzin ? const Color(0xFFECFDF5) : const Color(0xFFFFF7ED),
+            child: Row(
+              children: [
+                Icon(
+                  _denetlemeyeIzin ? Icons.videocam : Icons.videocam_off,
+                  size: 16,
+                  color: _denetlemeyeIzin ? const Color(0xFF059669) : const Color(0xFFD97706),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _denetlemeyeIzin
+                        ? (_kameraHazir ? 'Denetleme izni acik · kamera hazir' : 'Denetleme izni acik · kamera yukleniyor...')
+                        : 'Denetleme izni kapali',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: _denetlemeyeIzin ? const Color(0xFF059669) : const Color(0xFFD97706),
+                    ),
+                  ),
+                ),
+                Transform.scale(
+                  scale: 0.75,
+                  child: Switch(
+                    value: _denetlemeyeIzin,
+                    onChanged: _toggleIzin,
+                    activeColor: const Color(0xFF059669),
+                    inactiveThumbColor: const Color(0xFFD97706),
+                  ),
+                ),
+              ],
+            ),
+          ),
           // Üst bar - Sayım adı + aksiyonlar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

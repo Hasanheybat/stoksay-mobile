@@ -207,6 +207,18 @@ class _AyarlarScreenState extends ConsumerState<AyarlarScreen> {
                     value: _ayarlar['barkod_sesi'] != false,
                     onChanged: (_) => _toggleAyar('barkod_sesi'),
                   ),
+
+                  const Divider(height: 1, indent: 20, endIndent: 20, color: Color(0xFFF9FAFB)),
+
+                  // Miktar Otomatik Açılsın
+                  _ToggleRow(
+                    icon: Icons.calculate,
+                    gradColors: const [Color(0xFFF59E0B), Color(0xFFD97706)],
+                    title: 'Miktar Otomatik Açılsın',
+                    subtitle: 'Ürün seçilince hesap makinesi otomatik açılır',
+                    value: _ayarlar['miktar_otomatik'] == true,
+                    onChanged: (_) => _toggleAyar('miktar_otomatik'),
+                  ),
                 ],
               ),
             ),
