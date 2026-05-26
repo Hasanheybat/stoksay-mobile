@@ -6,6 +6,7 @@ import '../providers/isletme_provider.dart';
 import '../providers/connectivity_provider.dart';
 import '../widgets/sync_result_dialog.dart';
 import '../widgets/bildirim.dart';
+import '../services/storage_service.dart';
 import 'app_layout.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -338,7 +339,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     final syncEnabled = !isOffline;
 
     // ── YÜKLEME EKRANI (auth henüz yüklenmedi) ──
-    if (auth.yukleniyor || auth.kullanici == null) {
+    if (auth.yukleniyor) {
       return Scaffold(
         backgroundColor: const Color(0xFFF4F7FE),
         body: Center(
@@ -355,6 +356,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
               const SizedBox(height: 16),
               Text('Yükleniyor...', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
             ],
+          ),
+        ),
+      );
+    }
+
+    // ── HATA EKRANI (kullanici null + hata var) — sonsuz loading'i onler ──
+    if (auth.kullanici == null) {
+      // Token yoksa login'e gonder
+      if (!StorageService.hasToken) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) context.go('/login');
+        });
+      }
+      return Scaffold(
+        backgroundColor: const Color(0xFFF4F7FE),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off, size: 64, color: Color(0xFF9CA3AF)),
+                const SizedBox(height: 16),
+                Text(
+                  auth.hata ?? 'Baglanti hatasi',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1F2937)),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Lutfen internet baglantinizi kontrol edip tekrar deneyin.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _syncData,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tekrar Dene'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C53F5),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () async {
+                    await ref.read(authProvider.notifier).cikisYap();
+                    if (context.mounted) context.go('/login');
+                  },
+                  child: const Text('Cikis Yap', style: TextStyle(color: Color(0xFF9CA3AF))),
+                ),
+              ],
+            ),
           ),
         ),
       );

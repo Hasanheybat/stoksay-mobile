@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,11 +48,13 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   AppLifecycleListener? _lifecycleListener;
+  StreamSubscription<Map<String, dynamic>>? _socketSub;
 
   @override
   AuthState build() => AuthState();
 
   /// App foreground'a geldiğinde yetkileri yeniden kontrol eder
+  /// Ayrica socket'ten yetki guncelleme event'lerini dinler
   void initLifecycleObserver() {
     _lifecycleListener?.dispose();
     _lifecycleListener = AppLifecycleListener(
@@ -61,6 +64,20 @@ class AuthNotifier extends Notifier<AuthState> {
         }
       },
     );
+
+    // Socket yetki event listener — web'den rol/isletme degistiginde tazele
+    _socketSub?.cancel();
+    _socketSub = SocketService.events.listen((ev) {
+      final type = ev['type'] as String?;
+      if (type == 'kullanici:yetki_guncellendi' ||
+          type == 'kullanici:isletme_atandi' ||
+          type == 'kullanici:isletme_kaldirildi' ||
+          type == 'kullanici:pasif') {
+        if (StorageService.hasToken) {
+          oturumKontrol();
+        }
+      }
+    });
   }
 
   Future<void> oturumKontrol() async {
@@ -102,8 +119,10 @@ class AuthNotifier extends Notifier<AuthState> {
       state = AuthState(kullanici: kullanici, yetkilerMap: yetkilerMap, yukleniyor: false);
       try { await SocketService.connect(); } catch (_) {}
     } catch (e) {
+      final status = e is DioException ? e.response?.statusCode : null;
+
       // 403 = kullanıcı pasife alınmış → cache'e düşürme, pasif ekranı göster
-      if (e is DioException && e.response?.statusCode == 403) {
+      if (status == 403) {
         final cached = await _cacheOku();
         state = AuthState(
           kullanici: cached?['kullanici'],
@@ -113,13 +132,33 @@ class AuthNotifier extends Notifier<AuthState> {
         );
         return;
       }
+
       Map<String, dynamic>? cached;
       try { cached = await _cacheOku(); } catch (_) {}
+
       if (cached != null) {
-        state = AuthState(kullanici: cached['kullanici'], yetkilerMap: cached['yetkilerMap'], yukleniyor: false, cacheFallback: true);
-      } else {
+        // Cache var → eski yetkilerle calismaya devam et (fallback uyarisi ile)
+        state = AuthState(
+          kullanici: cached['kullanici'],
+          yetkilerMap: cached['yetkilerMap'],
+          yukleniyor: false,
+          cacheFallback: true,
+        );
+        return;
+      }
+
+      // Cache yok — sadece 401 (gercekten gecersiz token) durumunda token sil
+      // 500/timeout/network gibi gecici hatalarda token korunmali ki kullanici
+      // sonsuz "Yukleniyor..." ekraninda kilitlenmesin
+      if (status == 401) {
         await StorageService.removeToken();
         state = AuthState(yukleniyor: false, hata: 'Oturum dogrulanamadi');
+      } else {
+        // 500/network/timeout — token koru, hata mesaji goster
+        state = AuthState(
+          yukleniyor: false,
+          hata: 'Sunucuya ulasilamadi. Tekrar deneyin.',
+        );
       }
     }
   }

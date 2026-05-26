@@ -78,6 +78,11 @@ class SocketService {
     'webrtc:offer',
     'webrtc:answer',
     'webrtc:ice',
+    // Yetki/kullanici degisikligi — web'den rol/isletme atandiginda backend emit eder
+    'kullanici:yetki_guncellendi',
+    'kullanici:pasif',
+    'kullanici:isletme_atandi',
+    'kullanici:isletme_kaldirildi',
   ];
 
   static void emit(String event, dynamic data) {
