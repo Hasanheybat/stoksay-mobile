@@ -49,35 +49,60 @@ class AuthState {
 class AuthNotifier extends Notifier<AuthState> {
   AppLifecycleListener? _lifecycleListener;
   StreamSubscription<Map<String, dynamic>>? _socketSub;
+  bool _observerInited = false;
+  DateTime? _lastRefresh;
 
   @override
-  AuthState build() => AuthState();
+  AuthState build() {
+    // Notifier dispose oldugunda subscription'lari temizle
+    ref.onDispose(() {
+      _socketSub?.cancel();
+      _socketSub = null;
+      _lifecycleListener?.dispose();
+      _lifecycleListener = null;
+    });
+    return AuthState();
+  }
+
+  /// Throttle: ardisik cagrilarda gereksiz API spam'i onler
+  void _refreshThrottled() {
+    final now = DateTime.now();
+    if (_lastRefresh != null && now.difference(_lastRefresh!).inSeconds < 3) {
+      return;
+    }
+    _lastRefresh = now;
+    if (StorageService.hasToken) {
+      oturumKontrol();
+    }
+  }
 
   /// App foreground'a geldiğinde yetkileri yeniden kontrol eder
   /// Ayrica socket'ten yetki guncelleme event'lerini dinler
+  /// IDEMPOTENT — bircok kez cagrilsa bile bir kez kurulum yapar
   void initLifecycleObserver() {
-    _lifecycleListener?.dispose();
-    _lifecycleListener = AppLifecycleListener(
-      onResume: () {
-        if (StorageService.hasToken) {
-          oturumKontrol();
-        }
-      },
-    );
+    if (_observerInited) return;
+    _observerInited = true;
+
+    try {
+      _lifecycleListener = AppLifecycleListener(
+        onResume: _refreshThrottled,
+      );
+    } catch (e) {
+      // AppLifecycleListener cold-start'ta hata verebilir, sessizce gec
+    }
 
     // Socket yetki event listener — web'den rol/isletme degistiginde tazele
-    _socketSub?.cancel();
-    _socketSub = SocketService.events.listen((ev) {
-      final type = ev['type'] as String?;
-      if (type == 'kullanici:yetki_guncellendi' ||
-          type == 'kullanici:isletme_atandi' ||
-          type == 'kullanici:isletme_kaldirildi' ||
-          type == 'kullanici:pasif') {
-        if (StorageService.hasToken) {
-          oturumKontrol();
+    try {
+      _socketSub = SocketService.events.listen((ev) {
+        final type = ev['type'] as String?;
+        if (type == 'kullanici:yetki_guncellendi' ||
+            type == 'kullanici:isletme_atandi' ||
+            type == 'kullanici:isletme_kaldirildi' ||
+            type == 'kullanici:pasif') {
+          _refreshThrottled();
         }
-      }
-    });
+      });
+    } catch (_) {}
   }
 
   Future<void> oturumKontrol() async {
