@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'api_service.dart';
 import 'storage_service.dart';
 import 'offline_id_service.dart';
@@ -7,55 +8,89 @@ import '../db/sync_service.dart';
 
 class SayimService {
   // ── Ana Metodlar (offline/online yönlendirme) ──
+  //
+  // Online moddayken ağ koparsa otomatik olarak lokal SQLite + sync kuyruğuna
+  // düşer (_fallback). Böylece sayım sırasında bağlantı kesilse bile veri
+  // kaybolmaz; bağlantı gelince connectivity_provider kuyruğu gönderir.
+
+  /// Online çağrı ağ hatasıyla düşerse offline yola geç.
+  /// Sunucu cevap verdiyse (4xx/5xx) hata aynen fırlatılır — veri sorunu maskelenmez.
+  static Future<T> _fallback<T>(Future<T> Function() online, Future<T> Function() offline) async {
+    try {
+      return await online();
+    } on DioException catch (e) {
+      if (!ApiService.baglantiHatasi(e)) rethrow;
+      return offline();
+    }
+  }
 
   static Future<List<Map<String, dynamic>>> listele(String isletmeId) async {
     if (StorageService.isOffline) return _listeleOffline(isletmeId);
-    return listeleOnline(isletmeId);
+    return _fallback(() => listeleOnline(isletmeId), () => _listeleOffline(isletmeId));
   }
 
+  /// Temp ID'li kayıtlar sadece lokalde var — online modda bile lokale yönlen.
+  /// (Ağ kesintisi fallback'i ile oluşturulan sayım, sync olana dek temp ID taşır.)
+  static bool _temp(dynamic id) => OfflineIdService.isTempId(id);
+
   static Future<Map<String, dynamic>> detay(String sayimId) async {
-    if (StorageService.isOffline) return _detayOffline(sayimId);
-    return detayOnline(sayimId);
+    if (StorageService.isOffline || _temp(sayimId)) return _detayOffline(sayimId);
+    return _fallback(() => detayOnline(sayimId), () => _detayOffline(sayimId));
   }
 
   static Future<Map<String, dynamic>> olustur(Map<String, dynamic> data) async {
     if (StorageService.isOffline) return _olusturOffline(data);
-    return olusturOnline(data);
+    return _fallback(() => olusturOnline(data), () => _olusturOffline(data));
   }
 
   static Future<Map<String, dynamic>> guncelle(dynamic id, Map<String, dynamic> data) async {
-    if (StorageService.isOffline) return _guncelleOffline(id, data);
-    return guncelleOnline(id, data);
+    if (StorageService.isOffline || _temp(id)) return _guncelleOffline(id, data);
+    return _fallback(() => guncelleOnline(id, data), () => _guncelleOffline(id, data));
   }
 
   static Future<void> sil(dynamic id) async {
-    if (StorageService.isOffline) return _silOffline(id);
-    return silOnline(id);
+    if (StorageService.isOffline || _temp(id)) return _silOffline(id);
+    return _fallback(() => silOnline(id), () => _silOffline(id));
   }
 
   static Future<void> tamamla(dynamic id) async {
-    if (StorageService.isOffline) return _tamamlaOffline(id);
-    return tamamlaOnline(id);
+    if (StorageService.isOffline || _temp(id)) return _tamamlaOffline(id);
+    return _fallback(() => tamamlaOnline(id), () => _tamamlaOffline(id));
   }
 
   static Future<List<Map<String, dynamic>>> kalemListele(dynamic sayimId) async {
-    if (StorageService.isOffline) return _kalemListeleOffline(sayimId);
-    return kalemListeleOnline(sayimId);
+    if (StorageService.isOffline || _temp(sayimId)) return _kalemListeleOffline(sayimId);
+    return _fallback(() => kalemListeleOnline(sayimId), () => _kalemListeleOffline(sayimId));
   }
 
   static Future<Map<String, dynamic>> kalemEkle(dynamic sayimId, Map<String, dynamic> data) async {
     if (StorageService.isOffline) return _kalemEkleOffline(sayimId, data);
-    return kalemEkleOnline(sayimId, data);
+    if (_temp(sayimId)) return {...await _kalemEkleOffline(sayimId, data), '_offline': true};
+    return _fallback(
+      () => kalemEkleOnline(sayimId, data),
+      // _offline işareti: ekran "cihaza kaydedildi" mesajı gösterir
+      () async => {...await _kalemEkleOffline(sayimId, data), '_offline': true},
+    );
   }
 
   static Future<void> kalemGuncelle(dynamic sayimId, dynamic kalemId, Map<String, dynamic> data) async {
-    if (StorageService.isOffline) return _kalemGuncelleOffline(sayimId, kalemId, data);
-    return kalemGuncelleOnline(sayimId, kalemId, data);
+    if (StorageService.isOffline || _temp(kalemId) || _temp(sayimId)) {
+      return _kalemGuncelleOffline(sayimId, kalemId, data);
+    }
+    return _fallback(
+      () => kalemGuncelleOnline(sayimId, kalemId, data),
+      () => _kalemGuncelleOffline(sayimId, kalemId, data),
+    );
   }
 
   static Future<void> kalemSil(dynamic sayimId, dynamic kalemId) async {
-    if (StorageService.isOffline) return _kalemSilOffline(sayimId, kalemId);
-    return kalemSilOnline(sayimId, kalemId);
+    if (StorageService.isOffline || _temp(kalemId) || _temp(sayimId)) {
+      return _kalemSilOffline(sayimId, kalemId);
+    }
+    return _fallback(
+      () => kalemSilOnline(sayimId, kalemId),
+      () => _kalemSilOffline(sayimId, kalemId),
+    );
   }
 
   static Future<Map<String, dynamic>> topla({
@@ -69,8 +104,10 @@ class SayimService {
 
   static Future<List<Map<String, dynamic>>> toplanmisListele(String isletmeId) async {
     if (StorageService.isOffline) return _toplanmisListeleOffline(isletmeId);
-    return toplanmisListeleOnline(isletmeId);
+    return _fallback(() => toplanmisListeleOnline(isletmeId), () => _toplanmisListeleOffline(isletmeId));
   }
+  // Not: topla() bilerek fallback'siz — toplama sunucu verisiyle yapılmalı,
+  // eksik lokal önbellekle yanlış toplam üretmek veri kaybından daha tehlikeli.
 
   // ── Online Metodlar (API) ──
 

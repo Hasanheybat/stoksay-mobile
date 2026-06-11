@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../services/sayim_service.dart';
+import '../services/storage_service.dart';
 import '../services/urun_service.dart';
 import '../services/socket_service.dart';
 import '../widgets/bildirim.dart';
@@ -59,6 +62,10 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
   Timer? _debounce2;
   bool _skip1 = false;
   bool _skip2 = false;
+  CancelToken? _cancel1;
+  CancelToken? _cancel2;
+  int _seq1 = 0;
+  int _seq2 = 0;
 
   final _isimFocusNode = FocusNode();
   final _audioPlayer = AudioPlayer();
@@ -97,6 +104,8 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
   void dispose() {
     _debounce1?.cancel();
     _debounce2?.cancel();
+    _cancel1?.cancel();
+    _cancel2?.cancel();
     _isimController.dispose();
     _isim2Controller.dispose();
     _kodController.dispose();
@@ -111,6 +120,8 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
       final data = await SayimService.detay(widget.sayimId);
       if (data['isletme_id'] != null) {
         setState(() => _isletmeId = data['isletme_id'].toString());
+        // Ürün önbelleğini arka planda tazele (lokal arama + offline fallback için)
+        unawaited(UrunService.onbellegiYenile(_isletmeId!).catchError((_) {}));
       }
     } catch (_) {}
     // Son eklenen kalemi çek
@@ -128,25 +139,60 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
     } catch (_) {}
   }
 
+  void _onerileriGoster(int alan, List<Map<String, dynamic>> sonuclar, {required bool bosGoster}) {
+    setState(() {
+      if (alan == 1) {
+        _oneriler1 = sonuclar;
+        _bos1 = bosGoster && sonuclar.isEmpty;
+        _acik1 = true;
+      } else {
+        _oneriler2 = sonuclar;
+        _bos2 = bosGoster && sonuclar.isEmpty;
+        _acik2 = true;
+      }
+    });
+  }
+
   Future<void> _araUrun(String q, int alan) async {
     if (_isletmeId == null) return;
     // Ürün zaten seçildiyse arama yapma
     if (_urunId != null) return;
+
+    // Bu aramanın sıra numarası — daha yeni arama başlarsa sonucu çöpe at
+    final seq = alan == 1 ? ++_seq1 : ++_seq2;
+    bool guncel() => mounted && _urunId == null && (alan == 1 ? _seq1 : _seq2) == seq;
+
+    // 1) Lokal önbellekten anında öneri (ağ beklenmez)
     try {
-      final sonuclar = await UrunService.listele(_isletmeId!, arama: q, limit: 10, alan: alan == 2 ? 'isim_2' : null);
-      // Arama sonucu döndüğünde ürün seçilmişse listeyi açma
-      if (_urunId != null) return;
-      setState(() {
-        if (alan == 1) {
-          _oneriler1 = sonuclar;
-          _bos1 = sonuclar.isEmpty;
-          _acik1 = true;
-        } else {
-          _oneriler2 = sonuclar;
-          _bos2 = sonuclar.isEmpty;
-          _acik2 = true;
-        }
-      });
+      final lokal = await UrunService.lokalAra(_isletmeId!, q, alan: alan == 2 ? 'isim_2' : null);
+      if (!guncel()) return;
+      if (StorageService.isOffline) {
+        // Offline modda lokal sonuç nihaidir — ağa çıkma
+        _onerileriGoster(alan, lokal, bosGoster: true);
+        return;
+      }
+      if (lokal.isNotEmpty) {
+        _onerileriGoster(alan, lokal, bosGoster: false);
+      }
+    } catch (_) {}
+
+    // 2) API'den güncel sonuç — önceki istek iptal edilir
+    final eskiToken = alan == 1 ? _cancel1 : _cancel2;
+    eskiToken?.cancel();
+    final token = CancelToken();
+    if (alan == 1) { _cancel1 = token; } else { _cancel2 = token; }
+
+    try {
+      final sonuclar = await UrunService.listele(
+        _isletmeId!, arama: q, limit: 10,
+        alan: alan == 2 ? 'isim_2' : null,
+        cancelToken: token,
+      );
+      if (!guncel()) return;
+      _onerileriGoster(alan, sonuclar, bosGoster: true);
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) return;
+      // Ağ hatası — lokal önbellek sonuçları ekranda kalır
     } catch (_) {}
   }
 
@@ -327,7 +373,12 @@ class _UrunEkleScreenState extends ConsumerState<UrunEkleScreen> {
           'kalem': sonuc,
         });
       } catch (_) {}
-      _showSnack('Ürün sayıma eklendi!');
+      if (sonuc['_offline'] == true) {
+        _showSnack('Bağlantı yok — cihaza kaydedildi, bağlanınca gönderilecek.');
+        unawaited(ref.read(connectivityProvider.notifier).bekleyenGuncelle());
+      } else {
+        _showSnack('Ürün sayıma eklendi!');
+      }
       _temizle();
       final urun = sonuc['isletme_urunler'];
       setState(() {

@@ -45,9 +45,14 @@ class ConnectivityNotifier extends Notifier<ConnectivityState> {
   }
 
   void _init() {
-    Connectivity().checkConnectivity().then((results) {
-      state = state.copyWith(online: !results.contains(ConnectivityResult.none));
-      _updateBekleyen();
+    Connectivity().checkConnectivity().then((results) async {
+      final online = !results.contains(ConnectivityResult.none);
+      state = state.copyWith(online: online);
+      await _updateBekleyen();
+      // Açılışta bekleyen kuyruk varsa gönder (ağ kesintisi fallback kayıtları)
+      if (online && !state.offlineMode && state.bekleyenSync > 0) {
+        SyncService.kuyruguGonder().then((_) => _updateBekleyen());
+      }
     });
 
     _sub = Connectivity().onConnectivityChanged.listen((results) {

@@ -36,4 +36,15 @@ class ApiService {
   }
 
   static Dio get dio => _dio;
+
+  /// Sunucuya hiç ulaşılamadı mı? (timeout, DNS, soket kopması)
+  /// Sunucu cevap verdiyse (4xx/5xx) ağ sorunu DEĞİLDİR — offline fallback yapılmaz.
+  static bool baglantiHatasi(DioException e) {
+    if (e.response != null) return false;
+    return e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.unknown;
+  }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:sqflite/sqflite.dart';
 import 'api_service.dart';
 import 'storage_service.dart';
 import 'offline_id_service.dart';
@@ -10,9 +11,9 @@ import '../db/sync_service.dart';
 class UrunService {
   // ── Ana Metodlar (offline/online yönlendirme) ──
 
-  static Future<List<Map<String, dynamic>>> listele(String isletmeId, {int sayfa = 1, int limit = 50, String? arama, String? alan}) async {
+  static Future<List<Map<String, dynamic>>> listele(String isletmeId, {int sayfa = 1, int limit = 50, String? arama, String? alan, CancelToken? cancelToken}) async {
     if (StorageService.isOffline) return _listeleOffline(isletmeId, arama: arama);
-    return listeleOnline(isletmeId, sayfa: sayfa, limit: limit, arama: arama, alan: alan);
+    return listeleOnline(isletmeId, sayfa: sayfa, limit: limit, arama: arama, alan: alan, cancelToken: cancelToken);
   }
 
   static Future<Map<String, dynamic>?> barkodBul(String isletmeId, String barkod) async {
@@ -74,14 +75,14 @@ class UrunService {
 
   // ── Online Metodlar (API) ──
 
-  static Future<List<Map<String, dynamic>>> listeleOnline(String isletmeId, {int sayfa = 1, int limit = 50, String? arama, String? alan}) async {
+  static Future<List<Map<String, dynamic>>> listeleOnline(String isletmeId, {int sayfa = 1, int limit = 50, String? arama, String? alan, CancelToken? cancelToken}) async {
     final res = await ApiService.dio.get('/urunler', queryParameters: {
       'isletme_id': isletmeId,
       'sayfa': sayfa,
       'limit': limit,
       if (arama != null && arama.isNotEmpty) 'q': arama,
       if (alan != null && alan.isNotEmpty) 'alan': alan,
-    });
+    }, cancelToken: cancelToken);
     final raw = res.data;
     if (raw is Map && raw['data'] is List) {
       return List<Map<String, dynamic>>.from(raw['data']);
@@ -111,6 +112,79 @@ class UrunService {
     await ApiService.dio.delete('/urunler/$id');
   }
 
+  // ── Lokal Önbellek (arama hızlandırma + offline fallback) ──
+
+  /// Lokal SQLite önbelleğinde anında arama. Ağ beklemeden öneri göstermek için.
+  static Future<List<Map<String, dynamic>>> lokalAra(String isletmeId, String q, {String? alan, int limit = 10}) async {
+    final db = await DatabaseHelper.database;
+    final term = '%${q.toLowerCase()}%';
+    final isim2 = alan == 'isim_2';
+    final rows = await db.query(
+      'urunler',
+      where: isim2
+          ? 'isletme_id = ? AND aktif = 1 AND LOWER(isim_2) LIKE ?'
+          : 'isletme_id = ? AND aktif = 1 AND (LOWER(urun_adi) LIKE ? OR LOWER(urun_kodu) LIKE ? OR LOWER(barkodlar) LIKE ? OR LOWER(isim_2) LIKE ?)',
+      whereArgs: isim2 ? [isletmeId, term] : [isletmeId, term, term, term, term],
+      orderBy: 'urun_adi',
+      limit: limit,
+    );
+    return rows.map(_barkodDecode).toList();
+  }
+
+  /// Ürün önbelleğini arka planda tazeler (6 saatten eskiyse veya boşsa).
+  /// Sayım ekranı açılınca çağrılır — lokal arama ve offline fallback için.
+  static Future<void> onbellegiYenile(String isletmeId) async {
+    if (StorageService.isOffline) return;
+    final db = await DatabaseHelper.database;
+
+    final sonRows = await db.rawQuery(
+      'SELECT MAX(son_guncelleme) AS son FROM urunler WHERE isletme_id = ?', [isletmeId]);
+    final son = sonRows.isNotEmpty ? sonRows.first['son'] as String? : null;
+    if (son != null) {
+      final t = DateTime.tryParse(son);
+      if (t != null && DateTime.now().difference(t) < const Duration(hours: 6)) return;
+    }
+
+    final liste = await listeleOnline(isletmeId, sayfa: 1, limit: 10000);
+    await db.transaction((txn) async {
+      // Henüz senkronize olmamış temp ürünleri koru
+      final templer = await txn.query('urunler',
+        where: "isletme_id = ? AND id LIKE 'temp_%'", whereArgs: [isletmeId]);
+      await txn.delete('urunler', where: 'isletme_id = ?', whereArgs: [isletmeId]);
+      for (final u in liste) {
+        final uid = u['id']?.toString() ?? '';
+        if (uid.isEmpty) continue;
+        await txn.insert('urunler', {
+          'id': uid,
+          'urun_kodu': u['urun_kodu'],
+          'urun_adi': u['urun_adi'],
+          'isim_2': u['isim_2'],
+          'birim': u['birim'],
+          'barkodlar': jsonEncode(u['barkodlar'] ?? []),
+          'isletme_id': isletmeId,
+          'aktif': 1,
+          'son_guncelleme': DateTime.now().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final t in templer) {
+        await txn.insert('urunler', t, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  /// barkodlar JSON string → List (ekranlar List bekliyor)
+  static Map<String, dynamic> _barkodDecode(Map<String, dynamic> row) {
+    final r = Map<String, dynamic>.from(row);
+    if (r['barkodlar'] is String) {
+      try {
+        r['barkodlar'] = jsonDecode(r['barkodlar'] as String);
+      } catch (_) {
+        r['barkodlar'] = [];
+      }
+    }
+    return r;
+  }
+
   // ── Offline Metodlar (SQLite) ──
 
   static Future<List<Map<String, dynamic>>> _listeleOffline(String isletmeId, {String? arama}) async {
@@ -126,18 +200,7 @@ class UrunService {
       rows = await db.query('urunler', where: 'isletme_id = ? AND aktif = 1', whereArgs: [isletmeId]);
     }
 
-    // barkodlar JSON string → List çevir (ekranlar List bekliyor)
-    return rows.map((row) {
-      final r = Map<String, dynamic>.from(row);
-      if (r['barkodlar'] is String) {
-        try {
-          r['barkodlar'] = jsonDecode(r['barkodlar'] as String);
-        } catch (_) {
-          r['barkodlar'] = [];
-        }
-      }
-      return r;
-    }).toList();
+    return rows.map(_barkodDecode).toList();
   }
 
   static Future<Map<String, dynamic>?> _barkodBulOffline(String isletmeId, String barkod) async {
