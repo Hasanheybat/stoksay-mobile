@@ -46,6 +46,8 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
   WebRtcService? _rtc;
   bool _denetlemeyeIzin = true;
   bool _kameraHazir = false;
+  // _rtc henuz olusmadan gelen ICE adaylari (izin diyalogu acikken) burada bekler
+  final List<Map<String, dynamic>> _bekleyenIce = [];
 
   @override
   void initState() {
@@ -64,11 +66,22 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
     }
   }
 
-  Future<void> _kamerayiOnceden() async {
-    if (_kameraHazir) return;
+  // Hazırlık tek seferlik ve BEKLENEBİLİR. Eskiden hazırlık sürerken
+  // (izin diyaloğu + getUserMedia saniyeler sürer) offer gelirse _rtc atanmış
+  // ama _pc null olduğundan acceptOffer patlıyor, offer sonsuza dek
+  // kayboluyordu — denetleyici "Bağlanıyor..."da takılı kalıyordu.
+  Future<void>? _kameraHazirlik;
+
+  Future<void> _kamerayiOnceden() {
+    return _kameraHazirlik ??= _kamerayiHazirla();
+  }
+
+  Future<void> _kamerayiHazirla() async {
     final ok = await Permission.camera.request();
-    if (!ok.isGranted) return;
-    if (_rtc != null) return;
+    if (!ok.isGranted) {
+      _kameraHazirlik = null; // sonraki denemede izin tekrar sorulabilsin
+      return;
+    }
     _rtc = WebRtcService();
     await _rtc!.hazirla(kameraAc: true);
     if (mounted) setState(() => _kameraHazir = true);
@@ -81,6 +94,7 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
     } else {
       await _rtc?.dispose();
       _rtc = null;
+      _kameraHazirlik = null;
       if (mounted) setState(() => _kameraHazir = false);
     }
   }
@@ -108,22 +122,37 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
     } else if (type == 'denetleme:bitti' && data is Map) {
       _kalanTimer?.cancel();
       await _rtc?.dispose();
+      _kameraHazirlik = null; // sonraki denetlemede kamera yeniden hazirlanir
       setState(() {
         _denetleniyor = false;
         _denetleyiciEmail = null;
         _kalanSn = 0;
         _rtc = null;
+        _kameraHazir = false;
       });
     } else if (type == 'webrtc:offer' && data is Map) {
       // Denetleyici offer gonderdi — toggle acik ise direkt accept
       if (!_denetlemeyeIzin) return;
-      if (_rtc == null) await _kamerayiOnceden();
+      // Devam eden kamera hazirligi varsa BEKLE — yarista offer kaybolmasin
+      await _kamerayiOnceden();
+      if (_rtc == null || !_rtc!.hazir) return; // kamera izni reddedildi
       await _rtc?.acceptOffer(
         fromUserId: data['from'].toString(),
         sdp: Map<String, dynamic>.from(data['sdp']),
       );
+      // Hazirlik sirasinda biriken adaylari isle
+      final bekleyenler = List<Map<String, dynamic>>.from(_bekleyenIce);
+      _bekleyenIce.clear();
+      for (final cand in bekleyenler) {
+        await _rtc?.handleIce(cand);
+      }
     } else if (type == 'webrtc:ice' && data is Map) {
-      await _rtc?.handleIce(Map<String, dynamic>.from(data['candidate']));
+      final cand = Map<String, dynamic>.from(data['candidate']);
+      if (_rtc == null) {
+        _bekleyenIce.add(cand);
+        return;
+      }
+      await _rtc!.handleIce(cand);
     }
   }
 

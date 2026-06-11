@@ -28,7 +28,10 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
   WebRtcService? _rtc;
   RTCVideoRenderer? _renderer;
   bool _kameraAcik = false;
+  bool _baglaniyor = false;
+  String _rtcDurum = '';
   String? _sayimYapanId;
+  Timer? _baglantiTimeout;
 
   @override
   void initState() {
@@ -85,6 +88,7 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
   Future<void> _bitir({String sebep = 'manuel'}) async {
     SocketService.emit('denetleme:sonlandir', {'sayim_id': widget.sayimId});
     _kalanTimer?.cancel();
+    _baglantiTimeout?.cancel();
     await _rtc?.dispose();
     await _renderer?.dispose();
     if (mounted) {
@@ -97,22 +101,65 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
   }
 
   Future<void> _kameraAc() async {
-    if (_sayimYapanId == null) return;
-    _rtc = WebRtcService();
-    _renderer = RTCVideoRenderer();
-    await _renderer!.initialize();
-    _rtc!.onRemoteStream = (stream) {
-      if (!mounted) return;
-      setState(() {
-        _renderer!.srcObject = stream;
-        _kameraAcik = true;
+    if (_baglaniyor || _kameraAcik) return;
+    if (_sayimYapanId == null) {
+      _uyari('Sayım yapan kullanıcı bulunamadı (kullanici_id boş)');
+      return;
+    }
+    setState(() {
+      _baglaniyor = true;
+      _rtcDurum = 'Hazırlanıyor...';
+    });
+    try {
+      _rtc = WebRtcService();
+      _renderer = RTCVideoRenderer();
+      await _renderer!.initialize();
+      _rtc!.onDurum = (d) {
+        if (mounted) setState(() => _rtcDurum = d);
+      };
+      _rtc!.onRemoteStream = (stream) {
+        if (!mounted) return;
+        _baglantiTimeout?.cancel();
+        setState(() {
+          _renderer!.srcObject = stream;
+          _kameraAcik = true;
+          _baglaniyor = false;
+        });
+      };
+      _rtc!.onClose = () {
+        if (mounted) {
+          setState(() {
+            _kameraAcik = false;
+            _baglaniyor = false;
+          });
+        }
+      };
+      await _rtc!.hazirla(kameraAc: false);
+      await _rtc!.startCall(targetUserId: _sayimYapanId!);
+      // 20 sn icinde goruntu gelmezse net mesaj goster — sonsuz "Baglaniyor" olmasin
+      _baglantiTimeout?.cancel();
+      _baglantiTimeout = Timer(const Duration(seconds: 20), () {
+        if (!mounted || _kameraAcik) return;
+        setState(() {
+          _baglaniyor = false;
+          _rtcDurum = 'Yanıt yok';
+        });
+        _uyari('Sayım yapana ulaşılamadı — uygulaması kapalı/arka planda ya da kamera izni kapalı olabilir.');
       });
-    };
-    _rtc!.onClose = () {
-      if (mounted) setState(() => _kameraAcik = false);
-    };
-    await _rtc!.hazirla(kameraAc: false);
-    await _rtc!.startCall(targetUserId: _sayimYapanId!);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _baglaniyor = false;
+          _rtcDurum = 'Hata: $e';
+        });
+        _uyari('Kamera bağlanamadı: $e');
+      }
+    }
+  }
+
+  void _uyari(String mesaj) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mesaj)));
   }
 
   Future<void> _handleSocketEvent(Map<String, dynamic> ev) async {
@@ -142,6 +189,7 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
   @override
   void dispose() {
     _kalanTimer?.cancel();
+    _baglantiTimeout?.cancel();
     _socketSub?.cancel();
     SocketService.emit('sayim:leave', {'sayim_id': widget.sayimId});
     SocketService.emit('denetleme:sonlandir', {'sayim_id': widget.sayimId});
@@ -186,29 +234,8 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
           if (_baslatildi)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-              child: !_kameraAcik
-                  ? GestureDetector(
-                      onTap: _kameraAc,
-                      child: Container(
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: _P,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.videocam, color: Colors.white, size: 18),
-                              SizedBox(width: 8),
-                              Text('Kameraya Bak',
-                                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                  : ClipRRect(
+              child: _kameraAcik
+                  ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
                         height: 200,
@@ -218,7 +245,71 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
                             : RTCVideoView(_renderer!,
                                 objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                       ),
-                    ),
+                    )
+                  : _baglaniyor
+                      ? Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                ),
+                                const SizedBox(width: 12),
+                                Flexible(
+                                  child: Text(
+                                    _rtcDurum.isEmpty ? 'Bağlanıyor...' : _rtcDurum,
+                                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : GestureDetector(
+                          onTap: _kameraAc,
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _P,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Center(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.videocam, color: Colors.white, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Kameraya Bak',
+                                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+            ),
+          // Teşhis: WebRTC durum satırı
+          if (_baslatildi && _rtcDurum.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 0),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 12, color: Color(0xFF9CA3AF)),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(_rtcDurum,
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
             ),
           // Kalem listesi (canlı)
           Padding(

@@ -10,8 +10,15 @@ class WebRtcService {
   MediaStream? _remoteStream;
   String? _peerUserId;
 
+  // ICE aday yarışı düzeltmesi: remote description set edilmeden gelen
+  // adaylar eklenemez (addCandidate hata verir ve aday KAYBOLUR).
+  // Bekletip remote description sonrası flush ediyoruz.
+  final List<RTCIceCandidate> _bekleyenAdaylar = [];
+  bool _remoteDescHazir = false;
+
   void Function(MediaStream stream)? onRemoteStream;
   void Function()? onClose;
+  void Function(String durum)? onDurum; // teshis: baglanti/ICE durumu
 
   static Future<Map<String, dynamic>> _fetchIceServers() async {
     try {
@@ -51,14 +58,28 @@ class WebRtcService {
     };
 
     _pc!.onTrack = (event) {
+      if (kDebugMode) debugPrint('[webrtc] onTrack: ${event.track.kind}');
+      onDurum?.call('Görüntü geldi');
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams.first;
         onRemoteStream?.call(_remoteStream!);
       }
     };
 
+    _pc!.onIceGatheringState = (s) {
+      if (kDebugMode) debugPrint('[webrtc] iceGathering: $s');
+    };
+
+    _pc!.onIceConnectionState = (s) {
+      if (kDebugMode) debugPrint('[webrtc] iceConn: $s');
+      final t = s.toString().replaceFirst('RTCIceConnectionState', '');
+      onDurum?.call('ICE: $t');
+    };
+
     _pc!.onConnectionState = (state) {
       if (kDebugMode) debugPrint('[webrtc] state: $state');
+      final t = state.toString().replaceFirst('RTCPeerConnectionState', '');
+      onDurum?.call('Bağlantı: $t');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
@@ -70,18 +91,33 @@ class WebRtcService {
   /// DENETLEYICI tarafi: peer'a offer baslatir
   Future<void> startCall({required String targetUserId}) async {
     _peerUserId = targetUserId;
+    // Denetleyici sadece izler (kendi track'i yok). createOffer'in bos
+    // SDP uretmemesi icin recvonly video m-line ekle — yoksa sayim_yapan
+    // tarafi kamerayi geri gonderemez ve goruntu hic gelmez.
+    if (_localStream == null) {
+      await _pc!.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+    }
     final offer = await _pc!.createOffer();
     await _pc!.setLocalDescription(offer);
+    onDurum?.call('İstek gönderildi, yanıt bekleniyor...');
     SocketService.emit('webrtc:offer', {
       'target_user_id': targetUserId,
       'sdp': {'type': offer.type, 'sdp': offer.sdp},
     });
   }
 
+  /// Hazirlik tamam mi? (hazirla() bitti, peer connection kuruldu)
+  bool get hazir => _pc != null;
+
   /// SAYIM_YAPAN tarafi: gelen offer'i kabul edip answer gonderir
   Future<void> acceptOffer({required String fromUserId, required Map<String, dynamic> sdp}) async {
+    if (_pc == null) return; // hazirlik tamamlanmadan offer islenemez
     _peerUserId = fromUserId;
     await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
+    await _adaylariFlushEt();
     final answer = await _pc!.createAnswer();
     await _pc!.setLocalDescription(answer);
     SocketService.emit('webrtc:answer', {
@@ -94,15 +130,38 @@ class WebRtcService {
   Future<void> handleAnswer(Map<String, dynamic> sdp) async {
     if (_pc == null) return;
     await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
+    await _adaylariFlushEt();
   }
 
   Future<void> handleIce(Map<String, dynamic> candidate) async {
-    if (_pc == null) return;
-    await _pc!.addCandidate(RTCIceCandidate(
+    final aday = RTCIceCandidate(
       candidate['candidate'],
       candidate['sdpMid'],
       candidate['sdpMLineIndex'],
-    ));
+    );
+    // Remote description henuz yoksa beklet — yoksa aday kaybolur
+    if (_pc == null || !_remoteDescHazir) {
+      _bekleyenAdaylar.add(aday);
+      return;
+    }
+    try {
+      await _pc!.addCandidate(aday);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[webrtc] addCandidate hatasi: $e');
+    }
+  }
+
+  Future<void> _adaylariFlushEt() async {
+    _remoteDescHazir = true;
+    final bekleyenler = List<RTCIceCandidate>.from(_bekleyenAdaylar);
+    _bekleyenAdaylar.clear();
+    for (final aday in bekleyenler) {
+      try {
+        await _pc!.addCandidate(aday);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[webrtc] flush addCandidate hatasi: $e');
+      }
+    }
   }
 
   Future<void> dispose() async {
@@ -116,6 +175,8 @@ class WebRtcService {
     _localStream = null;
     _remoteStream = null;
     _peerUserId = null;
+    _bekleyenAdaylar.clear();
+    _remoteDescHazir = false;
   }
 
   MediaStream? get localStream => _localStream;
