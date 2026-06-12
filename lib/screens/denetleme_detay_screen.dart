@@ -32,6 +32,7 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
   String _rtcDurum = '';
   String? _sayimYapanId;
   Timer? _baglantiTimeout;
+  Timer? _reofferTimer;
 
   @override
   void initState() {
@@ -89,6 +90,7 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
     SocketService.emit('denetleme:sonlandir', {'sayim_id': widget.sayimId});
     _kalanTimer?.cancel();
     _baglantiTimeout?.cancel();
+    _reofferTimer?.cancel();
     await _rtc?.dispose();
     await _renderer?.dispose();
     if (mounted) {
@@ -136,15 +138,29 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
       };
       await _rtc!.hazirla(kameraAc: false);
       await _rtc!.startCall(targetUserId: _sayimYapanId!);
+      // Answer gelmezse 6 sn arayla 2 kez ayni offer'i tekrar gonder
+      // (karsi taraf kamera hazirligindaysa veya paket kaybolduysa kurtarir)
+      _reofferTimer?.cancel();
+      int deneme = 0;
+      _reofferTimer = Timer.periodic(const Duration(seconds: 6), (t) {
+        if (!mounted || _kameraAcik || (_rtc?.remoteDescHazir ?? true) || deneme >= 2) {
+          t.cancel();
+          return;
+        }
+        deneme++;
+        if (mounted) setState(() => _rtcDurum = 'Yanıt yok, yeniden deneniyor ($deneme/2)...');
+        _rtc?.reofferGonder();
+      });
       // 20 sn icinde goruntu gelmezse net mesaj goster — sonsuz "Baglaniyor" olmasin
       _baglantiTimeout?.cancel();
       _baglantiTimeout = Timer(const Duration(seconds: 20), () {
         if (!mounted || _kameraAcik) return;
+        _reofferTimer?.cancel();
         setState(() {
           _baglaniyor = false;
           _rtcDurum = 'Yanıt yok';
         });
-        _uyari('Sayım yapana ulaşılamadı — uygulaması kapalı/arka planda ya da kamera izni kapalı olabilir.');
+        _uyari('Sayım yapana ulaşılamadı — uygulaması ESKİ SÜRÜM, kapalı/arka planda ya da kamera izni kapalı olabilir.');
       });
     } catch (e) {
       if (mounted) {
@@ -180,9 +196,28 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
     } else if (type == 'denetleme:bitti') {
       await _bitir(sebep: 'sunucu');
     } else if (type == 'webrtc:answer' && data is Map) {
+      _reofferTimer?.cancel();
       await _rtc?.handleAnswer(Map<String, dynamic>.from(data['sdp']));
     } else if (type == 'webrtc:ice' && data is Map) {
       await _rtc?.handleIce(Map<String, dynamic>.from(data['candidate']));
+    } else if (type == 'webrtc:reject' && data is Map) {
+      // Karsi taraf sebebiyle reddetti — beklemeyi kes, net mesaj goster
+      _reofferTimer?.cancel();
+      _baglantiTimeout?.cancel();
+      final sebep = data['sebep']?.toString();
+      final mesaj = switch (sebep) {
+        'izin_kapali' => 'Sayım yapan izlemeye izin vermiyor (izleme anahtarı kapalı).',
+        'kamera_izni_yok' => 'Sayım yapanın telefonunda kamera izni kapalı — Ayarlardan açması gerekiyor.',
+        _ => 'Sayım yapan bağlantıyı reddetti.',
+      };
+      if (mounted) {
+        setState(() {
+          _baglaniyor = false;
+          _kameraAcik = false;
+          _rtcDurum = 'Reddedildi';
+        });
+        _uyari(mesaj);
+      }
     }
   }
 
@@ -190,6 +225,7 @@ class _DenetlemeDetayScreenState extends ConsumerState<DenetlemeDetayScreen> {
   void dispose() {
     _kalanTimer?.cancel();
     _baglantiTimeout?.cancel();
+    _reofferTimer?.cancel();
     _socketSub?.cancel();
     SocketService.emit('sayim:leave', {'sayim_id': widget.sayimId});
     SocketService.emit('denetleme:sonlandir', {'sayim_id': widget.sayimId});

@@ -16,6 +16,16 @@ class WebRtcService {
   final List<RTCIceCandidate> _bekleyenAdaylar = [];
   bool _remoteDescHazir = false;
 
+  // Yeniden gonderim icin son offer/answer SDP'leri saklanir:
+  // - Denetleyici: answer gelmezse ayni offer'i tekrar gonderir (reofferGonder)
+  // - Sayim yapan: ayni peer'dan cift offer gelirse answer'i tekrar gonderir
+  //   (answer paketi kaybolduysa baglanti yine kurulur)
+  Map<String, dynamic>? _sonOfferSdp;
+  Map<String, dynamic>? _sonAnswerSdp;
+
+  /// Remote description set edildi mi? (answer/offer islendi)
+  bool get remoteDescHazir => _remoteDescHazir;
+
   void Function(MediaStream stream)? onRemoteStream;
   void Function()? onClose;
   void Function(String durum)? onDurum; // teshis: baglanti/ICE durumu
@@ -102,10 +112,21 @@ class WebRtcService {
     }
     final offer = await _pc!.createOffer();
     await _pc!.setLocalDescription(offer);
+    _sonOfferSdp = {'type': offer.type, 'sdp': offer.sdp};
     onDurum?.call('İstek gönderildi, yanıt bekleniyor...');
     SocketService.emit('webrtc:offer', {
       'target_user_id': targetUserId,
-      'sdp': {'type': offer.type, 'sdp': offer.sdp},
+      'sdp': _sonOfferSdp,
+    });
+  }
+
+  /// DENETLEYICI tarafi: answer gelmediyse ayni offer'i tekrar gonderir.
+  /// (Karsi taraf hazirlik sirasindaysa veya paket kaybolduysa kurtarir.)
+  void reofferGonder() {
+    if (_peerUserId == null || _sonOfferSdp == null || _remoteDescHazir) return;
+    SocketService.emit('webrtc:offer', {
+      'target_user_id': _peerUserId,
+      'sdp': _sonOfferSdp,
     });
   }
 
@@ -115,14 +136,26 @@ class WebRtcService {
   /// SAYIM_YAPAN tarafi: gelen offer'i kabul edip answer gonderir
   Future<void> acceptOffer({required String fromUserId, required Map<String, dynamic> sdp}) async {
     if (_pc == null) return; // hazirlik tamamlanmadan offer islenemez
+
+    // Ayni peer'dan tekrar offer (retry) — answer kaybolmus olabilir,
+    // mevcut baglantiyi bozmadan sakli answer'i tekrar gonder
+    if (_remoteDescHazir && fromUserId == _peerUserId && _sonAnswerSdp != null) {
+      SocketService.emit('webrtc:answer', {
+        'target_user_id': fromUserId,
+        'sdp': _sonAnswerSdp,
+      });
+      return;
+    }
+
     _peerUserId = fromUserId;
     await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
     await _adaylariFlushEt();
     final answer = await _pc!.createAnswer();
     await _pc!.setLocalDescription(answer);
+    _sonAnswerSdp = {'type': answer.type, 'sdp': answer.sdp};
     SocketService.emit('webrtc:answer', {
       'target_user_id': fromUserId,
-      'sdp': {'type': answer.type, 'sdp': answer.sdp},
+      'sdp': _sonAnswerSdp,
     });
   }
 
@@ -177,6 +210,8 @@ class WebRtcService {
     _peerUserId = null;
     _bekleyenAdaylar.clear();
     _remoteDescHazir = false;
+    _sonOfferSdp = null;
+    _sonAnswerSdp = null;
   }
 
   MediaStream? get localStream => _localStream;

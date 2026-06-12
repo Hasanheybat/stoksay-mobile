@@ -78,6 +78,7 @@ class SocketService {
     'webrtc:offer',
     'webrtc:answer',
     'webrtc:ice',
+    'webrtc:reject',
     // Yetki/kullanici degisikligi — web'den rol/isletme atandiginda backend emit eder
     'kullanici:yetki_guncellendi',
     'kullanici:pasif',

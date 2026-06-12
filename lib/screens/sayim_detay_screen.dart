@@ -131,11 +131,31 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
         _kameraHazir = false;
       });
     } else if (type == 'webrtc:offer' && data is Map) {
+      final istekden = data['from']?.toString();
       // Denetleyici offer gonderdi — toggle acik ise direkt accept
-      if (!_denetlemeyeIzin) return;
+      if (!_denetlemeyeIzin) {
+        // Sessiz kalma — denetleyiciye sebebini bildir
+        SocketService.emit('webrtc:reject', {
+          'target_user_id': istekden,
+          'sebep': 'izin_kapali',
+        });
+        return;
+      }
       // Devam eden kamera hazirligi varsa BEKLE — yarista offer kaybolmasin
       await _kamerayiOnceden();
-      if (_rtc == null || !_rtc!.hazir) return; // kamera izni reddedildi
+      if (_rtc == null || !_rtc!.hazir) {
+        // Kamera izni reddedilmis — denetleyiciye bildir + kullaniciyi uyar
+        SocketService.emit('webrtc:reject', {
+          'target_user_id': istekden,
+          'sebep': 'kamera_izni_yok',
+        });
+        if (mounted) {
+          showBildirim(context,
+            'Denetleyici bağlanmak istedi ama kamera izni kapalı. Ayarlar > M Inventory > Kamera iznini açın.',
+            basarili: false);
+        }
+        return;
+      }
       await _rtc?.acceptOffer(
         fromUserId: data['from'].toString(),
         sdp: Map<String, dynamic>.from(data['sdp']),
