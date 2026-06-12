@@ -77,14 +77,25 @@ class _SayimDetayScreenState extends ConsumerState<SayimDetayScreen> {
   }
 
   Future<void> _kamerayiHazirla() async {
-    final ok = await Permission.camera.request();
-    if (!ok.isGranted) {
-      _kameraHazirlik = null; // sonraki denemede izin tekrar sorulabilsin
-      return;
+    // Izin iste (Android icin sart). iOS'ta permission_handler yanlis
+    // derlenmisse sahte red donebilir — o yuzden red gelse bile
+    // getUserMedia denenir: gercek sistem diyalogu orada tetiklenir.
+    final izin = await Permission.camera.request();
+    try {
+      _rtc = WebRtcService();
+      await _rtc!.hazirla(kameraAc: true);
+      if (mounted) setState(() => _kameraHazir = true);
+    } catch (e) {
+      // Kamera gercekten acilamadi (izin reddi veya donanim)
+      await _rtc?.dispose();
+      _rtc = null;
+      _kameraHazirlik = null; // sonraki denemede tekrar sorulabilsin
+      if (mounted && !izin.isGranted) {
+        showBildirim(context,
+          'Kamera izni verilmedi — canlı izleme için Ayarlar > M Inventory > Kamera iznini açın.',
+          basarili: false);
+      }
     }
-    _rtc = WebRtcService();
-    await _rtc!.hazirla(kameraAc: true);
-    if (mounted) setState(() => _kameraHazir = true);
   }
 
   void _toggleIzin(bool yeni) async {
